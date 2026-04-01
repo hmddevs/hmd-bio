@@ -3,6 +3,8 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
+import { hashIP } from "@/lib/ip";
+import { UAParser } from "ua-parser-js";
 
 /**
  * Webhook endpoint for real-time YOURLS → MongoDB sync.
@@ -50,13 +52,17 @@ export async function POST(request: NextRequest) {
 
       if (!keyword) return apiError("Missing keyword", 400);
 
+      const ua = UAParser(userAgent || "");
+
       await Promise.all([
         Click.create({
           keyword,
           referrer: referrer || "",
           userAgent: userAgent || "",
-          ip: ip || "",
+          ip: hashIP(ip || ""),
           countryCode: countryCode || "",
+          browser: ua.browser.name || "",
+          os: ua.os.name || "",
           createdAt: clickTime ? new Date(clickTime) : new Date(),
         }),
         Link.updateOne({ keyword }, { $inc: { clicks: 1 } }),

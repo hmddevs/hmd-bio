@@ -6,6 +6,8 @@ export interface IClick extends Document {
   userAgent: string;
   ip: string;
   countryCode: string;
+  browser: string;
+  os: string;
   createdAt: Date;
 }
 
@@ -16,6 +18,8 @@ const ClickSchema = new Schema<IClick>(
     userAgent: { type: String, default: "" },
     ip: { type: String, default: "" },
     countryCode: { type: String, default: "", maxlength: 2 },
+    browser: { type: String, default: "" },
+    os: { type: String, default: "" },
     createdAt: { type: Date, default: Date.now },
   },
   {
@@ -24,6 +28,9 @@ const ClickSchema = new Schema<IClick>(
 );
 
 ClickSchema.index({ keyword: 1, createdAt: -1 });
+ClickSchema.index({ keyword: 1, referrer: 1 });
+ClickSchema.index({ keyword: 1, browser: 1 });
+ClickSchema.index({ keyword: 1, os: 1 });
 ClickSchema.index({ countryCode: 1 });
 
 export const Click: Model<IClick> =
