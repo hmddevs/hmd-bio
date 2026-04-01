@@ -19,12 +19,32 @@ declare global {
 const cached: MongooseCache = global.mongooseCache ?? { conn: null, promise: null };
 global.mongooseCache = cached;
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+async function connectWithRetry(attempt = 1): Promise<typeof mongoose> {
+  try {
+    return await mongoose.connect(MONGODB_URI, {
+      bufferCommands: false,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+  } catch (err) {
+    if (attempt >= MAX_RETRIES) throw err;
+    console.warn(`MongoDB connection attempt ${attempt} failed, retrying in ${RETRY_DELAY_MS}ms...`);
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+    return connectWithRetry(attempt + 1);
+  }
+}
+
 export async function connectDB(): Promise<typeof mongoose> {
   if (cached.conn) return cached.conn;
 
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, {
-      bufferCommands: false,
+    cached.promise = connectWithRetry().catch((err) => {
+      // Reset promise on failure so the next call retries
+      cached.promise = null;
+      throw err;
     });
   }
 

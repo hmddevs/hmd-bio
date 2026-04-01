@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Box,
@@ -58,15 +58,10 @@ import {
   Legend,
   PieLabelRenderProps,
 } from "recharts";
-import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  ZoomableGroup,
-} from "react-simple-maps";
 import { getCountryInfo } from "@/lib/countries";
 
-const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+// Lazy-load the heavy map component to reduce initial bundle
+const CountryMapSection = lazy(() => import("./CountryMap"));
 
 interface LinkData {
   keyword: string;
@@ -481,62 +476,13 @@ export default function LinkDetailPage() {
                 {stats.countries.length === 0 ? (
                   <Typography color="text.secondary">No country data</Typography>
                 ) : (
-                  <>
-                    <Box sx={{ mb: 2, border: 1, borderColor: "divider", borderRadius: 2, overflow: "hidden" }}>
-                      <ComposableMap
-                        projectionConfig={{ rotate: [-10, 0, 0], scale: 147 }}
-                        style={{ width: "100%", height: "auto" }}
-                      >
-                        <ZoomableGroup>
-                          <Geographies geography={GEO_URL}>
-                            {({ geographies }) =>
-                              geographies.map((geo) => {
-                                const iso = geo.properties?.ISO_A2 ?? geo.id;
-                                const clicks = countryClickMap[iso] || 0;
-                                const intensity = clicks
-                                  ? 0.15 + (clicks / maxClicks) * 0.85
-                                  : 0;
-                                return (
-                                  <Geography
-                                    key={geo.rsmKey}
-                                    geography={geo}
-                                    fill={
-                                      clicks
-                                        ? `rgba(25, 118, 210, ${intensity})`
-                                        : theme.palette.mode === "dark"
-                                          ? "#333"
-                                          : "#e0e0e0"
-                                    }
-                                    stroke={theme.palette.divider}
-                                    strokeWidth={0.5}
-                                    style={{
-                                      default: { outline: "none" },
-                                      hover: { outline: "none", fill: theme.palette.primary.light },
-                                      pressed: { outline: "none" },
-                                    }}
-                                  />
-                                );
-                              })
-                            }
-                          </Geographies>
-                        </ZoomableGroup>
-                      </ComposableMap>
-                    </Box>
-                    <List dense>
-                      {stats.countries.map((c) => {
-                        const info = getCountryInfo(c.code);
-                        return (
-                          <ListItem key={c.code} sx={{ px: 0 }}>
-                            <ListItemText
-                              primary={`${info.flag} ${info.name}`}
-                              primaryTypographyProps={{ fontSize: 13 }}
-                            />
-                            <Chip label={c.count} size="small" />
-                          </ListItem>
-                        );
-                      })}
-                    </List>
-                  </>
+                  <Suspense fallback={<Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>}>
+                    <CountryMapSection
+                      countries={stats.countries}
+                      countryClickMap={countryClickMap}
+                      maxClicks={maxClicks}
+                    />
+                  </Suspense>
                 )}
               </Box>
             )}

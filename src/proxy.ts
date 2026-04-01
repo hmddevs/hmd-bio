@@ -43,6 +43,7 @@ export async function proxy(request: NextRequest) {
         "user-agent": request.headers.get("user-agent") || "",
         referer: request.headers.get("referer") || "",
         "x-geo-country": request.headers.get("x-vercel-ip-country") || "",
+        "x-internal-secret": process.env.INTERNAL_SECRET || "",
       },
     });
 

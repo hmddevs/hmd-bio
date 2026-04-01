@@ -91,7 +91,9 @@ export async function PUT(
       await Click.updateMany({ keyword }, { keyword: newKeyword });
     }
 
-    const updated = await Link.findOneAndUpdate({ keyword }, { $set: updates }, { new: true }).lean();
+    const updated = await Link.findOneAndUpdate({ keyword }, { $set: updates }, { new: true })
+      .select("-password")
+      .lean();
 
     return apiSuccess(updated);
   } catch (err) {

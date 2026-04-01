@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
     const filter: Record<string, unknown> = {};
 
     if (search) {
-      const regex = { $regex: search, $options: "i" };
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = { $regex: escaped, $options: "i" };
       filter.$or = [
         { keyword: regex },
         { url: regex },

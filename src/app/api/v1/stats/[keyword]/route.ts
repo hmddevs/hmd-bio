@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { UAParser } from "ua-parser-js";
+import { auth } from "@/lib/auth";
 
 function periodToDate(period: string): Date | null {
   const now = new Date();
@@ -23,6 +23,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
+  const session = await auth();
+  if (!session?.user) {
+    return apiError("Unauthorized", 401);
+  }
+
   try {
     const { keyword } = await params;
     const period = request.nextUrl.searchParams.get("period") || "all";
@@ -39,7 +44,7 @@ export async function GET(
       matchFilter.createdAt = { $gte: since };
     }
 
-    const [referrers, countries, timeline, totalInPeriod, clickDocs] =
+    const [referrers, countries, timeline, totalInPeriod, browsers, operatingSystems] =
       await Promise.all([
         Click.aggregate([
           { $match: matchFilter },
@@ -65,7 +70,18 @@ export async function GET(
           { $sort: { _id: 1 } },
         ]),
         Click.countDocuments(matchFilter),
-        Click.find(matchFilter).select("userAgent referrer").lean(),
+        Click.aggregate([
+          { $match: { ...matchFilter, browser: { $ne: "" } } },
+          { $group: { _id: "$browser", count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 10 },
+        ]),
+        Click.aggregate([
+          { $match: { ...matchFilter, os: { $ne: "" } } },
+          { $group: { _id: "$os", count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 10 },
+        ]),
       ]);
 
     // Best day
@@ -85,27 +101,6 @@ export async function GET(
       totalInPeriod > 0
         ? Math.round((directCount / totalInPeriod) * 100)
         : 0;
-
-    // Browser & OS aggregation from UA strings
-    const browserCounts: Record<string, number> = {};
-    const osCounts: Record<string, number> = {};
-    for (const doc of clickDocs) {
-      const ua = UAParser(doc.userAgent);
-      const browser = ua.browser.name || "Unknown";
-      const os = ua.os.name || "Unknown";
-      browserCounts[browser] = (browserCounts[browser] || 0) + 1;
-      osCounts[os] = (osCounts[os] || 0) + 1;
-    }
-
-    const browsers = Object.entries(browserCounts)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-
-    const operatingSystems = Object.entries(osCounts)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
 
     return apiSuccess({
       keyword: link.keyword,
@@ -130,8 +125,8 @@ export async function GET(
         count: c.count,
       })),
       timeline: timeline.map((t) => ({ date: t._id, count: t.count })),
-      browsers,
-      operatingSystems,
+      browsers: browsers.map((b) => ({ name: b._id || "Unknown", count: b.count })),
+      operatingSystems: operatingSystems.map((o) => ({ name: o._id || "Unknown", count: o.count })),
     });
   } catch (err) {
     console.error("Keyword stats error:", err);
