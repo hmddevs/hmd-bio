@@ -6,10 +6,10 @@ import DashboardClient from "@/components/admin/DashboardClient";
 export default async function AdminDashboard() {
   await connectDB();
 
-  const [totalLinks, totalClicks, topLinks, recentLinks, recentActivity] =
+  const [totalLinks, totalClicksAgg, topLinks, recentLinks, recentActivity] =
     await Promise.all([
       Link.countDocuments(),
-      Click.countDocuments(),
+      Link.aggregate([{ $group: { _id: null, total: { $sum: "$clicks" } } }]),
       Link.find({}).sort({ clicks: -1 }).limit(5).lean(),
       Link.find({}).sort({ createdAt: -1 }).limit(5).lean(),
       Click.aggregate([
@@ -29,6 +29,8 @@ export default async function AdminDashboard() {
         { $sort: { _id: 1 } },
       ]),
     ]);
+
+  const totalClicks = totalClicksAgg[0]?.total ?? 0;
 
   const baseUrl = process.env.AUTH_URL || "https://hmd.bio";
 
