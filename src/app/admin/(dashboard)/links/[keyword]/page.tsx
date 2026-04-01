@@ -1,7 +1,72 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Chip,
+  Button,
+  IconButton,
+  Tabs,
+  Tab,
+  TextField,
+  MenuItem,
+  Checkbox,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  Avatar,
+  CircularProgress,
+  Divider,
+  Alert,
+  Tooltip,
+  ToggleButton,
+  ToggleButtonGroup,
+} from "@mui/material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import EditIcon from "@mui/icons-material/Edit";
+import QrCodeIcon from "@mui/icons-material/QrCode2";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ShareIcon from "@mui/icons-material/Share";
+import PublicIcon from "@mui/icons-material/Public";
+import DevicesIcon from "@mui/icons-material/Devices";
+import LinkIcon from "@mui/icons-material/Link";
+import TimelineIcon from "@mui/icons-material/Timeline";
+import StarIcon from "@mui/icons-material/Star";
+import { useTheme } from "@mui/material/styles";
+import {
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  Legend,
+  PieLabelRenderProps,
+} from "recharts";
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+  ZoomableGroup,
+} from "react-simple-maps";
+import { getCountryInfo } from "@/lib/countries";
+
+const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 interface LinkData {
   keyword: string;
@@ -19,20 +84,41 @@ interface LinkData {
 }
 
 interface Stats {
-  referrers: { _id: string; count: number }[];
-  countries: { _id: string; count: number }[];
-  timeline: { _id: string; count: number }[];
+  clicksInPeriod: number;
+  period: string;
+  bestDay: { date: string; count: number } | null;
+  directCount: number;
+  referredCount: number;
+  directPercent: number;
+  uniqueReferrers: number;
+  uniqueCountries: number;
+  referrers: { referrer: string; count: number }[];
+  countries: { code: string; count: number }[];
+  timeline: { date: string; count: number }[];
+  browsers: { name: string; count: number }[];
+  operatingSystems: { name: string; count: number }[];
 }
+
+const PIE_COLORS = [
+  "#1976d2", "#e91e63", "#9c27b0", "#ff9800", "#4caf50",
+  "#00bcd4", "#ff5722", "#795548", "#607d8b", "#3f51b5",
+];
+
+type Period = "24h" | "7d" | "30d" | "all";
 
 export default function LinkDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const theme = useTheme();
   const keyword = params.keyword as string;
 
   const [link, setLink] = useState<LinkData | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [tab, setTab] = useState(0);
+  const [period, setPeriod] = useState<Period>("all");
+  const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({
     url: "",
     title: "",
@@ -50,37 +136,42 @@ export default function LinkDetailPage() {
     ? window.location.origin
     : "https://hmd.bio";
 
-  useEffect(() => {
-    async function load() {
-      const [linkRes, statsRes] = await Promise.all([
-        fetch(`/api/v1/links/${keyword}`),
-        fetch(`/api/v1/stats/${keyword}`),
-      ]);
-      const linkData = await linkRes.json();
-      const statsData = await statsRes.json();
+  const shortUrl = `${baseUrl}/${keyword}`;
 
-      if (linkData.success) {
-        setLink(linkData.data);
+  const loadStats = useCallback(async (p: Period) => {
+    const res = await fetch(`/api/v1/stats/${keyword}?period=${p}`);
+    const data = await res.json();
+    if (data.success) setStats(data.data);
+  }, [keyword]);
+
+  useEffect(() => {
+    async function loadLink() {
+      const res = await fetch(`/api/v1/links/${keyword}`);
+      const data = await res.json();
+      if (data.success) {
+        setLink(data.data);
         setForm({
-          url: linkData.data.url,
-          title: linkData.data.title || "",
-          statusCode: linkData.data.statusCode,
+          url: data.data.url,
+          title: data.data.title || "",
+          statusCode: data.data.statusCode,
           newPassword: "",
           removePassword: false,
-          expiresAt: linkData.data.expiresAt
-            ? linkData.data.expiresAt.slice(0, 16)
-            : "",
-          ogTitle: linkData.data.ogTitle || "",
-          ogDescription: linkData.data.ogDescription || "",
-          ogImage: linkData.data.ogImage || "",
+          expiresAt: data.data.expiresAt ? data.data.expiresAt.slice(0, 16) : "",
+          ogTitle: data.data.ogTitle || "",
+          ogDescription: data.data.ogDescription || "",
+          ogImage: data.data.ogImage || "",
         });
       }
-      if (statsData.success) {
-        setStats(statsData.data);
-      }
     }
-    load();
-  }, [keyword]);
+    loadLink();
+    loadStats(period);
+  }, [keyword, loadStats, period]);
+
+  function handlePeriodChange(_: React.MouseEvent<HTMLElement>, val: Period | null) {
+    if (val) {
+      setPeriod(val);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -104,7 +195,7 @@ export default function LinkDetailPage() {
     const data = await res.json();
     if (data.success) {
       setLink(data.data);
-      setEditing(false);
+      setEditOpen(false);
     }
     setSaving(false);
   }
@@ -119,321 +210,558 @@ export default function LinkDetailPage() {
     if (data.success) setQrSvg(data.data.svg);
   }
 
+  function handleCopy() {
+    navigator.clipboard.writeText(shortUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function faviconUrl(referrer: string): string {
+    if (referrer === "Direct" || !referrer) return "";
+    try {
+      const domain = new URL(
+        referrer.startsWith("http") ? referrer : `https://${referrer}`
+      ).hostname;
+      return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+    } catch {
+      return "";
+    }
+  }
+
+  // Build a map of country code → click count for the choropleth
+  const countryClickMap: Record<string, number> = {};
+  if (stats) {
+    for (const c of stats.countries) {
+      if (c.code !== "Unknown") countryClickMap[c.code] = c.count;
+    }
+  }
+  const maxClicks = Math.max(...Object.values(countryClickMap), 1);
+
   if (!link) {
     return (
-      <div className="flex items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-        Loading…
-      </div>
+      <Box sx={{ display: "flex", justifyContent: "center", py: 10 }}>
+        <CircularProgress />
+      </Box>
     );
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <Box sx={{ maxWidth: 1000 }}>
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <button
+      <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", mb: 3 }}>
+        <Box>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            size="small"
             onClick={() => router.push("/admin/links")}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 mb-2 inline-block"
+            sx={{ mb: 1 }}
           >
-            ← Back to links
-          </button>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {baseUrl}/{keyword}
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1 truncate max-w-lg">{link.url}</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleGenerateQr}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-          >
-            QR Code
-          </button>
-          <button
-            onClick={() => setEditing(!editing)}
-            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-          >
-            {editing ? "Cancel" : "Edit"}
-          </button>
-        </div>
-      </div>
+            Back to links
+          </Button>
+          <Typography variant="h5" fontWeight={700}>
+            {shortUrl}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 500 }}>
+            {link.url}
+          </Typography>
+          <Box sx={{ display: "flex", gap: 0.5, mt: 0.5 }}>
+            {link.statusCode === 302 && <Chip label="302 Temporary" size="small" color="warning" />}
+            {link.isPasswordProtected && <Chip label="Password Protected" size="small" color="info" />}
+            {link.expiresAt && <Chip label={`Expires ${new Date(link.expiresAt).toLocaleDateString()}`} size="small" />}
+          </Box>
+        </Box>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title={copied ? "Copied!" : "Copy URL"}>
+            <IconButton onClick={handleCopy} color={copied ? "success" : "default"}>
+              <ContentCopyIcon />
+            </IconButton>
+          </Tooltip>
+          <Button variant="outlined" size="small" startIcon={<QrCodeIcon />} onClick={handleGenerateQr}>
+            QR
+          </Button>
+          <Button variant="contained" size="small" startIcon={<EditIcon />} onClick={() => setEditOpen(true)}>
+            Edit
+          </Button>
+        </Box>
+      </Box>
 
-      {/* QR Code Modal */}
+      {/* QR Code */}
       {qrSvg && (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900 dark:text-white">
-              QR Code
-            </h2>
-            <button
-              onClick={() => setQrSvg("")}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              ✕
-            </button>
-          </div>
-          <div
-            className="flex justify-center"
-            dangerouslySetInnerHTML={{ __html: qrSvg }}
-          />
-        </div>
+        <Card sx={{ mb: 2 }}>
+          <CardContent sx={{ textAlign: "center" }}>
+            <Typography variant="subtitle2" gutterBottom>QR Code</Typography>
+            <Box dangerouslySetInnerHTML={{ __html: qrSvg }} sx={{ "& svg": { maxWidth: 200, mx: "auto" } }} />
+            <Button size="small" onClick={() => setQrSvg("")} sx={{ mt: 1 }}>Close</Button>
+          </CardContent>
+        </Card>
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total Clicks</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-            {link.clicks.toLocaleString()}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Status Code</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-            {link.statusCode}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Created</p>
-          <p className="text-lg font-bold text-gray-900 dark:text-white">
-            {new Date(link.createdAt).toLocaleDateString()}
-          </p>
-        </div>
-      </div>
+      {stats && (
+        <Grid container spacing={2} mb={2}>
+          <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+            <Card>
+              <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">Total Clicks</Typography>
+                <Typography variant="h5" fontWeight={700}>{link.clicks.toLocaleString()}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+            <Card>
+              <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">Unique Referrers</Typography>
+                <Typography variant="h5" fontWeight={700}>{stats.uniqueReferrers}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+            <Card>
+              <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">Countries</Typography>
+                <Typography variant="h5" fontWeight={700}>{stats.uniqueCountries}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+            <Card>
+              <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">Best Day</Typography>
+                <Typography variant="h6" fontWeight={700} noWrap>
+                  {stats.bestDay ? `${stats.bestDay.date.slice(5)} (${stats.bestDay.count})` : "—"}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+            <Card>
+              <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">Direct %</Typography>
+                <Typography variant="h5" fontWeight={700}>{stats.directPercent}%</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
 
-      {/* Edit Form */}
-      {editing && (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 space-y-4">
-          <h2 className="font-semibold text-gray-900 dark:text-white">
-            Edit Link
-          </h2>
+      {/* Tabs */}
+      {stats && (
+        <Card>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: "divider", px: 2 }} variant="scrollable" scrollButtons="auto">
+            <Tab icon={<TimelineIcon />} iconPosition="start" label="Timeline" />
+            <Tab icon={<LinkIcon />} iconPosition="start" label="Referrers" />
+            <Tab icon={<PublicIcon />} iconPosition="start" label="Countries" />
+            <Tab icon={<DevicesIcon />} iconPosition="start" label="Browser / OS" />
+            <Tab icon={<ShareIcon />} iconPosition="start" label="Share" />
+          </Tabs>
+          <CardContent>
+            {/* Timeline Tab */}
+            {tab === 0 && (
+              <Box>
+                <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
+                  <ToggleButtonGroup
+                    value={period}
+                    exclusive
+                    onChange={handlePeriodChange}
+                    size="small"
+                  >
+                    <ToggleButton value="24h">24h</ToggleButton>
+                    <ToggleButton value="7d">7d</ToggleButton>
+                    <ToggleButton value="30d">30d</ToggleButton>
+                    <ToggleButton value="all">All</ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
+                {stats.bestDay && (
+                  <Alert icon={<StarIcon />} severity="info" sx={{ mb: 2 }}>
+                    Best day: <strong>{stats.bestDay.date}</strong> with <strong>{stats.bestDay.count}</strong> clicks
+                  </Alert>
+                )}
+                {stats.timeline.length === 0 ? (
+                  <Typography color="text.secondary">No timeline data yet</Typography>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={stats.timeline}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 11 }}
+                        stroke={theme.palette.text.secondary}
+                        tickFormatter={(v) => v.slice(5)}
+                      />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke={theme.palette.text.secondary} />
+                      <RTooltip
+                        contentStyle={{
+                          backgroundColor: theme.palette.background.paper,
+                          border: `1px solid ${theme.palette.divider}`,
+                          borderRadius: 8,
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="count"
+                        stroke={theme.palette.primary.main}
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        name="Clicks"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </Box>
+            )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Destination URL
-            </label>
-            <input
+            {/* Referrers Tab */}
+            {tab === 1 && (
+              <Box>
+                <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
+                  <strong>{stats.directCount}</strong> direct · <strong>{stats.referredCount}</strong> referred ({stats.directPercent}% direct)
+                </Alert>
+                {stats.referrers.length === 0 ? (
+                  <Typography color="text.secondary">No referrer data</Typography>
+                ) : (
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <PieChart>
+                          <Pie
+                            data={stats.referrers.slice(0, 10)}
+                            dataKey="count"
+                            nameKey="referrer"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={100}
+                            label={(props: PieLabelRenderProps) =>
+                              `${props.name ?? ""} (${((props.percent ?? 0) * 100).toFixed(0)}%)`
+                            }
+                            labelLine={{ strokeWidth: 1 }}
+                          >
+                            {stats.referrers.slice(0, 10).map((_, i) => (
+                              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <RTooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <List dense disablePadding>
+                        {stats.referrers.map((r) => {
+                          const fav = faviconUrl(r.referrer);
+                          return (
+                            <ListItem key={r.referrer} sx={{ px: 0 }}>
+                              {fav ? (
+                                <ListItemAvatar sx={{ minWidth: 36 }}>
+                                  <Avatar src={fav} sx={{ width: 20, height: 20 }} variant="square" />
+                                </ListItemAvatar>
+                              ) : (
+                                <ListItemAvatar sx={{ minWidth: 36 }}>
+                                  <Avatar sx={{ width: 20, height: 20, fontSize: 12 }} variant="square">
+                                    <LinkIcon sx={{ fontSize: 14 }} />
+                                  </Avatar>
+                                </ListItemAvatar>
+                              )}
+                              <ListItemText
+                                primary={r.referrer}
+                                primaryTypographyProps={{ fontSize: 13, noWrap: true }}
+                              />
+                              <Chip label={r.count} size="small" />
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                    </Grid>
+                  </Grid>
+                )}
+              </Box>
+            )}
+
+            {/* Countries Tab */}
+            {tab === 2 && (
+              <Box>
+                {stats.countries.length === 0 ? (
+                  <Typography color="text.secondary">No country data</Typography>
+                ) : (
+                  <>
+                    <Box sx={{ mb: 2, border: 1, borderColor: "divider", borderRadius: 2, overflow: "hidden" }}>
+                      <ComposableMap
+                        projectionConfig={{ rotate: [-10, 0, 0], scale: 147 }}
+                        style={{ width: "100%", height: "auto" }}
+                      >
+                        <ZoomableGroup>
+                          <Geographies geography={GEO_URL}>
+                            {({ geographies }) =>
+                              geographies.map((geo) => {
+                                const iso = geo.properties?.ISO_A2 ?? geo.id;
+                                const clicks = countryClickMap[iso] || 0;
+                                const intensity = clicks
+                                  ? 0.15 + (clicks / maxClicks) * 0.85
+                                  : 0;
+                                return (
+                                  <Geography
+                                    key={geo.rsmKey}
+                                    geography={geo}
+                                    fill={
+                                      clicks
+                                        ? `rgba(25, 118, 210, ${intensity})`
+                                        : theme.palette.mode === "dark"
+                                          ? "#333"
+                                          : "#e0e0e0"
+                                    }
+                                    stroke={theme.palette.divider}
+                                    strokeWidth={0.5}
+                                    style={{
+                                      default: { outline: "none" },
+                                      hover: { outline: "none", fill: theme.palette.primary.light },
+                                      pressed: { outline: "none" },
+                                    }}
+                                  />
+                                );
+                              })
+                            }
+                          </Geographies>
+                        </ZoomableGroup>
+                      </ComposableMap>
+                    </Box>
+                    <List dense>
+                      {stats.countries.map((c) => {
+                        const info = getCountryInfo(c.code);
+                        return (
+                          <ListItem key={c.code} sx={{ px: 0 }}>
+                            <ListItemText
+                              primary={`${info.flag} ${info.name}`}
+                              primaryTypographyProps={{ fontSize: 13 }}
+                            />
+                            <Chip label={c.count} size="small" />
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  </>
+                )}
+              </Box>
+            )}
+
+            {/* Browser / OS Tab */}
+            {tab === 3 && (
+              <Box>
+                {stats.browsers.length === 0 && stats.operatingSystems.length === 0 ? (
+                  <Typography color="text.secondary">No device data yet</Typography>
+                ) : (
+                  <Grid container spacing={3}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Typography variant="subtitle2" gutterBottom>Browsers</Typography>
+                      {stats.browsers.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">No data</Typography>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={280}>
+                          <PieChart>
+                            <Pie
+                              data={stats.browsers}
+                              dataKey="count"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={90}
+                              label={(props: PieLabelRenderProps) =>
+                                `${props.name ?? ""} (${((props.percent ?? 0) * 100).toFixed(0)}%)`
+                              }
+                              labelLine={{ strokeWidth: 1 }}
+                            >
+                              {stats.browsers.map((_, i) => (
+                                <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <RTooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Typography variant="subtitle2" gutterBottom>Operating Systems</Typography>
+                      {stats.operatingSystems.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">No data</Typography>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={280}>
+                          <PieChart>
+                            <Pie
+                              data={stats.operatingSystems}
+                              dataKey="count"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={90}
+                              label={(props: PieLabelRenderProps) =>
+                                `${props.name ?? ""} (${((props.percent ?? 0) * 100).toFixed(0)}%)`
+                              }
+                              labelLine={{ strokeWidth: 1 }}
+                            >
+                              {stats.operatingSystems.map((_, i) => (
+                                <Cell key={i} fill={PIE_COLORS[(i + 5) % PIE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <RTooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                    </Grid>
+                  </Grid>
+                )}
+              </Box>
+            )}
+
+            {/* Share Tab */}
+            {tab === 4 && (
+              <Box>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Share this link: <strong>{shortUrl}</strong>
+                </Alert>
+                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<ShareIcon />}
+                    onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shortUrl)}`, "_blank")}
+                  >
+                    Twitter / X
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<ShareIcon />}
+                    onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shortUrl)}`, "_blank")}
+                  >
+                    Facebook
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<ShareIcon />}
+                    onClick={() => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shortUrl)}`, "_blank")}
+                  >
+                    LinkedIn
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<ShareIcon />}
+                    onClick={() => window.open(`mailto:?body=${encodeURIComponent(shortUrl)}`, "_blank")}
+                  >
+                    Email
+                  </Button>
+                  <Button variant="contained" size="small" startIcon={<ContentCopyIcon />} onClick={handleCopy}>
+                    {copied ? "Copied!" : "Copy Link"}
+                  </Button>
+                </Box>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Link</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+            <TextField
+              label="Destination URL"
               type="url"
+              fullWidth
               value={form.url}
               onChange={(e) => setForm({ ...form, url: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Title
-            </label>
-            <input
-              type="text"
+            <TextField
+              label="Title"
+              fullWidth
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Redirect Type
-              </label>
-              <select
-                value={form.statusCode}
-                onChange={(e) =>
-                  setForm({ ...form, statusCode: Number(e.target.value) })
-                }
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              >
-                <option value={301}>301 — Permanent</option>
-                <option value={302}>302 — Temporary</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Expires At
-              </label>
-              <input
-                type="datetime-local"
-                value={form.expiresAt}
-                onChange={(e) =>
-                  setForm({ ...form, expiresAt: e.target.value })
-                }
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Password Protection
-            </label>
-            {link.isPasswordProtected && (
-              <label className="flex items-center gap-2 mb-2 text-sm text-gray-600 dark:text-gray-400">
-                <input
-                  type="checkbox"
-                  checked={form.removePassword}
-                  onChange={(e) =>
-                    setForm({ ...form, removePassword: e.target.checked })
-                  }
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 6 }}>
+                <TextField
+                  label="Redirect Type"
+                  select
+                  fullWidth
+                  value={form.statusCode}
+                  onChange={(e) => setForm({ ...form, statusCode: Number(e.target.value) })}
+                >
+                  <MenuItem value={301}>301 — Permanent</MenuItem>
+                  <MenuItem value={302}>302 — Temporary</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 6 }}>
+                <TextField
+                  label="Expires At"
+                  type="datetime-local"
+                  fullWidth
+                  value={form.expiresAt}
+                  onChange={(e) => setForm({ ...form, expiresAt: e.target.value })}
+                  slotProps={{ inputLabel: { shrink: true } }}
                 />
-                Remove password
-              </label>
+              </Grid>
+            </Grid>
+
+            <Divider />
+            <Typography variant="subtitle2">Password Protection</Typography>
+            {link.isPasswordProtected && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={form.removePassword}
+                    onChange={(e) => setForm({ ...form, removePassword: e.target.checked })}
+                  />
+                }
+                label="Remove password"
+              />
             )}
-            <input
+            <TextField
+              label={link.isPasswordProtected ? "Change password" : "Set password"}
               type="password"
+              fullWidth
               value={form.newPassword}
-              onChange={(e) =>
-                setForm({ ...form, newPassword: e.target.value })
-              }
-              placeholder={
-                link.isPasswordProtected
-                  ? "Change password…"
-                  : "Set password…"
-              }
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              onChange={(e) => setForm({ ...form, newPassword: e.target.value })}
             />
-          </div>
 
-          <hr className="border-gray-200 dark:border-gray-800" />
-          <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400">
-            Open Graph Metadata
-          </h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">
-                OG Title
-              </label>
-              <input
-                type="text"
-                value={form.ogTitle}
-                onChange={(e) =>
-                  setForm({ ...form, ogTitle: e.target.value })
-                }
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">
-                OG Image URL
-              </label>
-              <input
-                type="url"
-                value={form.ogImage}
-                onChange={(e) =>
-                  setForm({ ...form, ogImage: e.target.value })
-                }
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">
-              OG Description
-            </label>
-            <textarea
-              value={form.ogDescription}
-              onChange={(e) =>
-                setForm({ ...form, ogDescription: e.target.value })
-              }
+            <Divider />
+            <Typography variant="subtitle2">Open Graph Metadata</Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 6 }}>
+                <TextField
+                  label="OG Title"
+                  fullWidth
+                  value={form.ogTitle}
+                  onChange={(e) => setForm({ ...form, ogTitle: e.target.value })}
+                />
+              </Grid>
+              <Grid size={{ xs: 6 }}>
+                <TextField
+                  label="OG Image URL"
+                  type="url"
+                  fullWidth
+                  value={form.ogImage}
+                  onChange={(e) => setForm({ ...form, ogImage: e.target.value })}
+                />
+              </Grid>
+            </Grid>
+            <TextField
+              label="OG Description"
+              fullWidth
+              multiline
               rows={2}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              value={form.ogDescription}
+              onChange={(e) => setForm({ ...form, ogDescription: e.target.value })}
             />
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-5 py-2.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Save Changes"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Analytics */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Click Timeline */}
-          {stats.timeline.length > 0 && (
-            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-6 md:col-span-2">
-              <h2 className="font-semibold text-gray-900 dark:text-white mb-4">
-                Click Timeline (Last 30 Days)
-              </h2>
-              <div className="flex items-end gap-1 h-32">
-                {stats.timeline.map((d) => {
-                  const max = Math.max(...stats.timeline.map((t) => t.count), 1);
-                  return (
-                    <div
-                      key={d._id}
-                      className="flex-1 bg-blue-500 dark:bg-blue-600 rounded-t hover:bg-blue-600 dark:hover:bg-blue-500 transition-colors relative group"
-                      style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count > 0 ? "2px" : "0" }}
-                    >
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                        {d._id}: {d.count}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Top Referrers */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-6">
-            <h2 className="font-semibold text-gray-900 dark:text-white mb-4">
-              Top Referrers
-            </h2>
-            {stats.referrers.length === 0 ? (
-              <p className="text-gray-400 dark:text-gray-500 text-sm">No referrer data</p>
-            ) : (
-              <ul className="space-y-2">
-                {stats.referrers.slice(0, 10).map((r) => (
-                  <li
-                    key={r._id}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="text-gray-700 dark:text-gray-300 truncate">
-                      {r._id || "Direct"}
-                    </span>
-                    <span className="text-gray-500 dark:text-gray-400 font-mono">
-                      {r.count}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Countries */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-6">
-            <h2 className="font-semibold text-gray-900 dark:text-white mb-4">
-              Top Countries
-            </h2>
-            {stats.countries.length === 0 ? (
-              <p className="text-gray-400 dark:text-gray-500 text-sm">No country data</p>
-            ) : (
-              <ul className="space-y-2">
-                {stats.countries.slice(0, 10).map((c) => (
-                  <li
-                    key={c._id}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="text-gray-700 dark:text-gray-300">
-                      {c._id || "Unknown"}
-                    </span>
-                    <span className="text-gray-500 dark:text-gray-400 font-mono">
-                      {c.count}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }

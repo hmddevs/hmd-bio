@@ -1,7 +1,38 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  Box,
+  Typography,
+  Card,
+  TextField,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TableSortLabel,
+  TablePagination,
+  IconButton,
+  Chip,
+  Button,
+  InputAdornment,
+  Collapse,
+  Grid,
+  CircularProgress,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import DeleteIcon from "@mui/icons-material/Delete";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import LockIcon from "@mui/icons-material/Lock";
 
 interface LinkItem {
   _id: string;
@@ -22,6 +53,7 @@ interface Pagination {
 }
 
 export default function LinksPage() {
+  const router = useRouter();
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 15, total: 0, totalPages: 0,
@@ -30,19 +62,29 @@ export default function LinksPage() {
   const [sort, setSort] = useState("createdAt");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [minClicks, setMinClicks] = useState("");
+  const [maxClicks, setMaxClicks] = useState("");
+  const [deleteKeyword, setDeleteKeyword] = useState<string | null>(null);
 
   const baseUrl = typeof window !== "undefined"
     ? window.location.origin
     : "https://hmd.bio";
 
-  const fetchLinks = useCallback(async (page = 1) => {
+  const fetchLinks = useCallback(async (page = 1, rowsPerPage?: number) => {
     setLoading(true);
     const params = new URLSearchParams({
       page: String(page),
-      limit: "15",
+      limit: String(rowsPerPage ?? pagination.limit),
       sort,
       order,
       ...(search ? { search } : {}),
+      ...(dateFrom ? { dateFrom } : {}),
+      ...(dateTo ? { dateTo } : {}),
+      ...(minClicks ? { minClicks } : {}),
+      ...(maxClicks ? { maxClicks } : {}),
     });
 
     try {
@@ -57,20 +99,20 @@ export default function LinksPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, sort, order]);
+  }, [search, sort, order, dateFrom, dateTo, minClicks, maxClicks, pagination.limit]);
 
   useEffect(() => {
     fetchLinks(1);
   }, [fetchLinks]);
 
-  async function handleDelete(keyword: string) {
-    if (!confirm(`Delete hmd.bio/${keyword}? This cannot be undone.`)) return;
-
-    const res = await fetch(`/api/v1/links/${keyword}`, { method: "DELETE" });
+  async function handleDelete() {
+    if (!deleteKeyword) return;
+    const res = await fetch(`/api/v1/links/${deleteKeyword}`, { method: "DELETE" });
     const data = await res.json();
     if (data.success) {
       fetchLinks(pagination.page);
     }
+    setDeleteKeyword(null);
   }
 
   function handleSort(field: string) {
@@ -82,170 +124,263 @@ export default function LinksPage() {
     }
   }
 
-  const SortIcon = ({ field }: { field: string }) => (
-    <span className="ml-1 text-gray-400 dark:text-gray-500">
-      {sort === field ? (order === "asc" ? "↑" : "↓") : ""}
-    </span>
-  );
+  function handleChangePage(_: unknown, newPage: number) {
+    fetchLinks(newPage + 1);
+  }
+
+  function handleChangeRowsPerPage(e: React.ChangeEvent<HTMLInputElement>) {
+    const newLimit = parseInt(e.target.value, 10);
+    fetchLinks(1, newLimit);
+  }
+
+  const from = (pagination.page - 1) * pagination.limit + 1;
+  const to = Math.min(pagination.page * pagination.limit, pagination.total);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+    <Box>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>
           Links
-        </h1>
-        <div className="flex gap-2">
-          <a
-            href="/api/v1/links/export"
-            className="px-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition"
-          >
-            Export CSV
-          </a>
-        </div>
-      </div>
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<FileDownloadIcon />}
+          href="/api/v1/links/export"
+        >
+          Export CSV
+        </Button>
+      </Box>
 
-      {/* Search */}
-      <div>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search keywords, URLs, titles…"
-          className="w-full max-w-md px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+      {/* Search + Filters */}
+      <Card sx={{ mb: 2, p: 2 }}>
+        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+          <TextField
+            size="small"
+            placeholder="Search keywords, URLs, titles…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ flex: 1, maxWidth: 400 }}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <Button
+            variant={showFilters ? "contained" : "outlined"}
+            size="small"
+            startIcon={<FilterListIcon />}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            Filters
+          </Button>
+        </Box>
+
+        <Collapse in={showFilters}>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <TextField
+                size="small"
+                label="Date from"
+                type="date"
+                fullWidth
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <TextField
+                size="small"
+                label="Date to"
+                type="date"
+                fullWidth
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <TextField
+                size="small"
+                label="Min clicks"
+                type="number"
+                fullWidth
+                value={minClicks}
+                onChange={(e) => setMinClicks(e.target.value)}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <TextField
+                size="small"
+                label="Max clicks"
+                type="number"
+                fullWidth
+                value={maxClicks}
+                onChange={(e) => setMaxClicks(e.target.value)}
+              />
+            </Grid>
+          </Grid>
+        </Collapse>
+      </Card>
+
+      {/* Summary */}
+      {!loading && (
+        <Typography variant="body2" color="text.secondary" mb={1}>
+          Showing {from}–{to} of {pagination.total.toLocaleString()} links
+          {" · "}
+          {links.reduce((s, l) => s + l.clicks, 0).toLocaleString()} clicks on this page
+        </Typography>
+      )}
 
       {/* Table */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
-                <th
-                  className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 cursor-pointer select-none"
-                  onClick={() => handleSort("keyword")}
-                >
-                  Short URL <SortIcon field="keyword" />
-                </th>
-                <th
-                  className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 cursor-pointer select-none"
-                  onClick={() => handleSort("url")}
-                >
-                  Destination <SortIcon field="url" />
-                </th>
-                <th
-                  className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400 cursor-pointer select-none"
-                  onClick={() => handleSort("clicks")}
-                >
-                  Clicks <SortIcon field="clicks" />
-                </th>
-                <th
-                  className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400 cursor-pointer select-none"
-                  onClick={() => handleSort("createdAt")}
-                >
-                  Created <SortIcon field="createdAt" />
-                </th>
-                <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+      <Card>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>
+                  <TableSortLabel
+                    active={sort === "keyword"}
+                    direction={sort === "keyword" ? order : "asc"}
+                    onClick={() => handleSort("keyword")}
+                  >
+                    Short URL
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sort === "url"}
+                    direction={sort === "url" ? order : "asc"}
+                    onClick={() => handleSort("url")}
+                  >
+                    Destination
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="right">
+                  <TableSortLabel
+                    active={sort === "clicks"}
+                    direction={sort === "clicks" ? order : "asc"}
+                    onClick={() => handleSort("clicks")}
+                  >
+                    Clicks
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="right">
+                  <TableSortLabel
+                    active={sort === "createdAt"}
+                    direction={sort === "createdAt" ? order : "asc"}
+                    onClick={() => handleSort("createdAt")}
+                  >
+                    Created
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
-                    Loading…
-                  </td>
-                </tr>
+                <TableRow>
+                  <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                    <CircularProgress size={28} />
+                  </TableCell>
+                </TableRow>
               ) : links.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
+                <TableRow>
+                  <TableCell colSpan={5} align="center" sx={{ py: 6, color: "text.secondary" }}>
                     No links found
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
                 links.map((link) => (
-                  <tr
+                  <TableRow
                     key={link._id}
-                    className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                    hover
+                    sx={{ cursor: "pointer" }}
+                    onClick={() => router.push(`/admin/links/${link.keyword}`)}
                   >
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/links/${link.keyword}`}
-                        className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
-                      >
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={500} color="primary.main">
                         {baseUrl}/{link.keyword}
-                      </Link>
-                      <div className="flex gap-1 mt-0.5">
+                      </Typography>
+                      <Box sx={{ display: "flex", gap: 0.5, mt: 0.25 }}>
                         {link.statusCode === 302 && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
-                            302
-                          </span>
+                          <Chip label="302" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
                         )}
                         {link.isPasswordProtected && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
-                            🔒
-                          </span>
+                          <Chip icon={<LockIcon sx={{ fontSize: 12 }} />} label="Protected" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
                         )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      <p className="truncate text-gray-700 dark:text-gray-300">
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 300 }}>
+                      <Typography variant="body2" noWrap>
                         {link.title || link.url}
-                      </p>
-                      <p className="truncate text-xs text-gray-400 dark:text-gray-500">
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap component="p">
                         {link.url}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-600 dark:text-gray-300">
-                      {link.clicks.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                      {new Date(link.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDelete(link.keyword)}
-                        className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-xs font-medium"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontFamily="monospace">
+                        {link.clicks.toLocaleString()}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {new Date(link.createdAt).toLocaleDateString()}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteKeyword(link.keyword);
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TablePagination
+          component="div"
+          count={pagination.total}
+          page={pagination.page - 1}
+          onPageChange={handleChangePage}
+          rowsPerPage={pagination.limit}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          rowsPerPageOptions={[15, 25, 50, 100]}
+        />
+      </Card>
 
-        {/* Pagination */}
-        {pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-800">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {pagination.total} links total
-            </p>
-            <div className="flex gap-2">
-              <button
-                disabled={pagination.page === 1}
-                onClick={() => fetchLinks(pagination.page - 1)}
-                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-              >
-                Previous
-              </button>
-              <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
-                {pagination.page} / {pagination.totalPages}
-              </span>
-              <button
-                disabled={pagination.page === pagination.totalPages}
-                onClick={() => fetchLinks(pagination.page + 1)}
-                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteKeyword} onClose={() => setDeleteKeyword(null)}>
+        <DialogTitle>Delete Link</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Delete <strong>hmd.bio/{deleteKeyword}</strong>? This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteKeyword(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }

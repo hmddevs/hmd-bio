@@ -19,7 +19,9 @@ export async function GET() {
   }
 
   // Return keys with masked values
-  const keys = user.apiKeys.map((k) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const keys = user.apiKeys.map((k: any) => ({
+    _id: k._id,
     label: k.label,
     key: k.key.slice(0, 8) + "..." + k.key.slice(-4),
     createdAt: k.createdAt,
@@ -72,16 +74,16 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const { key } = await request.json();
-    if (!key) {
-      return apiError("API key required", 400);
+    const { id } = await request.json();
+    if (!id) {
+      return apiError("API key id required", 400);
     }
 
     await connectDB();
 
     await User.updateOne(
       { username: session.user.name },
-      { $pull: { apiKeys: { key } } }
+      { $pull: { apiKeys: { _id: id } } }
     );
 
     return apiSuccess({ message: "API key deleted" });

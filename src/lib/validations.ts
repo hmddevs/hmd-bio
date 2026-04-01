@@ -22,6 +22,7 @@ export const editLinkSchema = z.object({
   statusCode: z.enum(["301", "302"]).optional(),
   isPasswordProtected: z.boolean().optional(),
   password: z.string().min(1).max(200).optional(),
+  removePassword: z.boolean().optional(),
   expiresAt: z.string().datetime().nullable().optional(),
   ogTitle: z.string().max(200).nullable().optional(),
   ogDescription: z.string().max(500).nullable().optional(),
