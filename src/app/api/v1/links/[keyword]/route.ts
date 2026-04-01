@@ -57,12 +57,17 @@ export async function PUT(
     if (parsed.data.url) updates.url = parsed.data.url;
     if (parsed.data.title !== undefined) updates.title = parsed.data.title;
     if (parsed.data.statusCode) updates.statusCode = Number(parsed.data.statusCode);
-    if (parsed.data.isPasswordProtected !== undefined) {
-      updates.isPasswordProtected = parsed.data.isPasswordProtected;
-    }
-    if (parsed.data.password) {
-      updates.password = await bcrypt.hash(parsed.data.password, 10);
-      updates.isPasswordProtected = true;
+    if (parsed.data.removePassword) {
+      updates.isPasswordProtected = false;
+      updates.password = null;
+    } else {
+      if (parsed.data.isPasswordProtected !== undefined) {
+        updates.isPasswordProtected = parsed.data.isPasswordProtected;
+      }
+      if (parsed.data.password) {
+        updates.password = await bcrypt.hash(parsed.data.password, 10);
+        updates.isPasswordProtected = true;
+      }
     }
     if (parsed.data.expiresAt !== undefined) {
       updates.expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;

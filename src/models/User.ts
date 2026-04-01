@@ -14,8 +14,7 @@ const ApiKeySchema = new Schema(
     key: { type: String, required: true },
     label: { type: String, default: "Default" },
     createdAt: { type: Date, default: Date.now },
-  },
-  { _id: false }
+  }
 );
 
 const UserSchema = new Schema<IUser>(
