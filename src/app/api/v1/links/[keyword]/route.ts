@@ -1,0 +1,119 @@
+import { NextRequest } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Link } from "@/models/Link";
+import { Click } from "@/models/Click";
+import { editLinkSchema } from "@/lib/validations";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { auth } from "@/lib/auth";
+import { isReservedKeyword } from "@/lib/utils";
+import bcrypt from "bcryptjs";
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ keyword: string }> }
+) {
+  const session = await auth();
+  if (!session?.user) {
+    return apiError("Unauthorized", 401);
+  }
+
+  const { keyword } = await params;
+  await connectDB();
+
+  const link = await Link.findOne({ keyword }).lean();
+  if (!link) {
+    return apiError("Link not found", 404);
+  }
+
+  return apiSuccess(link);
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ keyword: string }> }
+) {
+  const session = await auth();
+  if (!session?.user) {
+    return apiError("Unauthorized", 401);
+  }
+
+  try {
+    const { keyword } = await params;
+    const body = await request.json();
+    const parsed = editLinkSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(parsed.error.issues[0].message, 400);
+    }
+
+    await connectDB();
+
+    const existing = await Link.findOne({ keyword });
+    if (!existing) {
+      return apiError("Link not found", 404);
+    }
+
+    const updates: Record<string, unknown> = {};
+
+    if (parsed.data.url) updates.url = parsed.data.url;
+    if (parsed.data.title !== undefined) updates.title = parsed.data.title;
+    if (parsed.data.statusCode) updates.statusCode = Number(parsed.data.statusCode);
+    if (parsed.data.isPasswordProtected !== undefined) {
+      updates.isPasswordProtected = parsed.data.isPasswordProtected;
+    }
+    if (parsed.data.password) {
+      updates.password = await bcrypt.hash(parsed.data.password, 10);
+      updates.isPasswordProtected = true;
+    }
+    if (parsed.data.expiresAt !== undefined) {
+      updates.expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;
+    }
+    if (parsed.data.ogTitle !== undefined) updates.ogTitle = parsed.data.ogTitle;
+    if (parsed.data.ogDescription !== undefined) updates.ogDescription = parsed.data.ogDescription;
+    if (parsed.data.ogImage !== undefined) updates.ogImage = parsed.data.ogImage;
+
+    // Handle keyword change
+    if (parsed.data.keyword && parsed.data.keyword !== keyword) {
+      const newKeyword = parsed.data.keyword;
+      if (isReservedKeyword(newKeyword)) {
+        return apiError("This keyword is reserved", 400);
+      }
+      const conflict = await Link.findOne({ keyword: newKeyword });
+      if (conflict) {
+        return apiError("New keyword already in use", 409);
+      }
+      updates.keyword = newKeyword;
+      // Update click references
+      await Click.updateMany({ keyword }, { keyword: newKeyword });
+    }
+
+    const updated = await Link.findOneAndUpdate({ keyword }, { $set: updates }, { new: true }).lean();
+
+    return apiSuccess(updated);
+  } catch (err) {
+    console.error("Edit link error:", err);
+    return apiError("Internal server error", 500);
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ keyword: string }> }
+) {
+  const session = await auth();
+  if (!session?.user) {
+    return apiError("Unauthorized", 401);
+  }
+
+  const { keyword } = await params;
+  await connectDB();
+
+  const link = await Link.findOneAndDelete({ keyword });
+  if (!link) {
+    return apiError("Link not found", 404);
+  }
+
+  // Also remove click logs
+  await Click.deleteMany({ keyword });
+
+  return apiSuccess({ deleted: keyword });
+}
