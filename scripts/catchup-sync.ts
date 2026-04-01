@@ -115,9 +115,10 @@ async function main() {
 
       const existing = await Link.findOne({ keyword });
       if (existing) {
-        // Update click count to match YOURLS (source of truth during transition)
-        if (existing.clicks !== clickCount) {
-          await Link.updateOne({ keyword }, { $set: { clicks: clickCount } });
+        // Use $max so we never overwrite a higher MongoDB count
+        // (safe to run even after Vercel starts receiving direct traffic)
+        if (existing.clicks < clickCount) {
+          await Link.updateOne({ keyword }, { $max: { clicks: clickCount } });
           clicksUpdated++;
         }
       } else {

@@ -34,9 +34,6 @@ yarn-error.log*
 .env*
 !.env.example
 
-# database dumps
-*.sql
-
 # vercel
 .vercel
 
