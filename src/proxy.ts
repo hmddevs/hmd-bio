@@ -13,7 +13,7 @@ const BYPASS_PREFIXES = [
   "/sitemap.xml",
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip non-shorturl paths
@@ -47,7 +47,6 @@ export async function middleware(request: NextRequest) {
     });
 
     if (!res.ok) {
-      // Keyword not found → 404
       const notFoundUrl = new URL("/not-found", request.url);
       return NextResponse.rewrite(notFoundUrl);
     }

@@ -367,12 +367,12 @@ export default function LinkDetailPage() {
                   const max = Math.max(...stats.timeline.map((t) => t.count), 1);
                   return (
                     <div
-                      key={d._id}
+                      key={d.date}
                       className="flex-1 bg-blue-500 dark:bg-blue-600 rounded-t hover:bg-blue-600 dark:hover:bg-blue-500 transition-colors relative group"
                       style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count > 0 ? "2px" : "0" }}
                     >
                       <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                        {d._id}: {d.count}
+                        {d.date}: {d.count}
                       </div>
                     </div>
                   );

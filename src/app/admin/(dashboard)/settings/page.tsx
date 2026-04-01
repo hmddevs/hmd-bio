@@ -32,7 +32,7 @@ export default function SettingsPage() {
     setKeysLoading(true);
     const res = await fetch("/api/v1/auth/api-keys");
     const data = await res.json();
-    if (data.success) setApiKeys(data.data.apiKeys);
+    if (data.success) setApiKeys(data.data?.apiKeys ?? []);
     setKeysLoading(false);
   }
 
