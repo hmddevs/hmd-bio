@@ -26,3 +26,21 @@ body {
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.2s, color 0.2s;
 }
+
+/* Subtle dot grid background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+[data-theme="dark"] body::before,
+.dark body::before {
+  background-image: radial-gradient(circle, #374151 1px, transparent 1px);
+  opacity: 0.3;
+}
