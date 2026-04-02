@@ -16,6 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `Preview: ${link.title || link.keyword} — HMD.bio`,
     description: `This short URL (hmd.bio/${link.keyword}) redirects to: ${link.url}`,
+    robots: { index: false, follow: false },
     openGraph: {
       title: link.ogTitle || link.title || `hmd.bio/${link.keyword}`,
       description: link.ogDescription || `Redirects to: ${link.url}`,
@@ -34,26 +35,26 @@ export default async function PreviewPage({ params }: Props) {
   const shortUrl = `${process.env.AUTH_URL || "https://hmd.bio"}/${link.keyword}`;
 
   return (
-    <main className="flex-1 flex items-center justify-center px-4 py-16">
+    <main id="main-content" className="flex-1 flex items-center justify-center px-4 py-16">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Link Preview
           </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             You are about to visit:
           </p>
         </div>
 
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-6 space-y-4">
           <div>
-            <p className="text-xs font-medium uppercase text-gray-400 dark:text-gray-500">
+            <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-500">
               Short URL
             </p>
             <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">{shortUrl}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase text-gray-400 dark:text-gray-500">
+            <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-500">
               Destination
             </p>
             <p className="text-sm text-gray-700 dark:text-gray-300 break-all">
@@ -62,7 +63,7 @@ export default async function PreviewPage({ params }: Props) {
           </div>
           {link.title && (
             <div>
-              <p className="text-xs font-medium uppercase text-gray-400 dark:text-gray-500">
+              <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-500">
                 Title
               </p>
               <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -71,7 +72,7 @@ export default async function PreviewPage({ params }: Props) {
             </div>
           )}
           <div>
-            <p className="text-xs font-medium uppercase text-gray-400 dark:text-gray-500">
+            <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-500">
               Created
             </p>
             <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -79,7 +80,7 @@ export default async function PreviewPage({ params }: Props) {
             </p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase text-gray-400 dark:text-gray-500">
+            <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-500">
               Clicks
             </p>
             <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -90,7 +91,7 @@ export default async function PreviewPage({ params }: Props) {
           <a
             href={link.url}
             rel="noopener noreferrer"
-            className="block w-full py-3 text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
+            className="block w-full py-3 text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           >
             Continue to destination
           </a>

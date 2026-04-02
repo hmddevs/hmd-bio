@@ -18,8 +18,8 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
   return (
     <button
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${className}`}
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${className}`}
+      aria-label="Toggle dark mode"
     >
       {isDark ? (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
