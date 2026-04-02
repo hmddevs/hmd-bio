@@ -37,7 +37,7 @@ export default function PasswordPage() {
   }
 
   return (
-    <main className="flex-1 flex items-center justify-center px-4 py-16">
+    <main id="main-content" className="flex-1 flex items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-50 dark:bg-yellow-900/20 mb-4">
@@ -58,13 +58,15 @@ export default function PasswordPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
             Password Protected
           </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             This short URL requires a password to access.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <label htmlFor="password" className="sr-only">Password</label>
           <input
+            id="password"
             type="password"
             required
             value={password}
@@ -74,13 +76,13 @@ export default function PasswordPage() {
           />
 
           {error && (
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            <div role="alert" aria-live="assertive" className="text-sm text-red-600 dark:text-red-400">{error}</div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-colors"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           >
             {loading ? "Verifying…" : "Unlock"}
           </button>

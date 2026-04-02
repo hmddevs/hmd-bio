@@ -1,5 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import ThemeProvider from "@/components/providers/ThemeProvider";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import "./globals.css";
@@ -15,13 +17,51 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HMD.bio — URL Shortener",
-  description: "Fast, reliable URL shortening by HMD Developments",
-  openGraph: {
-    title: "HMD.bio — URL Shortener",
-    description: "Fast, reliable URL shortening by HMD Developments",
-    siteName: "HMD.bio",
+  metadataBase: new URL("https://hmd.bio"),
+  title: {
+    default: "HMD.bio — URL Shortener",
+    template: "%s | HMD.bio",
   },
+  description:
+    "Fast, reliable URL shortening by HMD Developments. Create short, branded links instantly.",
+  keywords: [
+    "url shortener",
+    "link shortener",
+    "short url",
+    "hmd.bio",
+    "branded links",
+    "custom short links",
+  ],
+  authors: [{ name: "HMD Developments", url: "https://hmddevs.org" }],
+  creator: "HMD Developments",
+  publisher: "HMD Developments",
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://hmd.bio",
+    siteName: "HMD.bio",
+    title: "HMD.bio — URL Shortener",
+    description:
+      "Fast, reliable URL shortening by HMD Developments. Create short, branded links instantly.",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HMD.bio — URL Shortener",
+    description:
+      "Fast, reliable URL shortening by HMD Developments. Create short, branded links instantly.",
+    images: ["/opengraph-image"],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -35,13 +75,25 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <link rel="dns-prefetch" href="https://challenges.cloudflare.com" />
+        <link rel="preconnect" href="https://challenges.cloudflare.com" crossOrigin="anonymous" />
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-lg"
+        >
+          Skip to main content
+        </a>
         <ThemeProvider>
           <div className="fixed top-4 right-4 z-50">
             <ThemeToggle />
           </div>
           {children}
         </ThemeProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
