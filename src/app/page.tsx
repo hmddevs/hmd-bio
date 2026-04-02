@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <main id="main-content" className="flex-1 flex items-center justify-center px-4 py-20">
-      <div className="w-full max-w-xl">
+    <main id="main-content" className="flex-1 px-4 py-16 sm:py-24">
+      <div className="w-full max-w-3xl mx-auto">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
