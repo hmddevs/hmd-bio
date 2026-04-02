@@ -45,8 +45,8 @@ import TimelineIcon from "@mui/icons-material/Timeline";
 import StarIcon from "@mui/icons-material/Star";
 import { useTheme } from "@mui/material/styles";
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   PieChart,
   Pie,
   Cell,
@@ -94,9 +94,13 @@ interface Stats {
   operatingSystems: { name: string; count: number }[];
 }
 
-const PIE_COLORS = [
+const PIE_COLORS_LIGHT = [
   "#1976d2", "#e91e63", "#9c27b0", "#ff9800", "#4caf50",
   "#00bcd4", "#ff5722", "#795548", "#607d8b", "#3f51b5",
+];
+const PIE_COLORS_DARK = [
+  "#90caf9", "#f48fb1", "#ce93d8", "#ffcc80", "#a5d6a7",
+  "#80deea", "#ff8a65", "#bcaaa4", "#b0bec5", "#9fa8da",
 ];
 
 type Period = "24h" | "7d" | "30d" | "all";
@@ -105,6 +109,7 @@ export default function LinkDetailPage() {
   const params = useParams();
   const router = useRouter();
   const theme = useTheme();
+  const pieColors = theme.palette.mode === "dark" ? PIE_COLORS_DARK : PIE_COLORS_LIGHT;
   const keyword = params.keyword as string;
 
   const [link, setLink] = useState<LinkData | null>(null);
@@ -375,7 +380,13 @@ export default function LinkDetailPage() {
                   <Typography color="text.secondary">No timeline data yet</Typography>
                 ) : (
                   <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={stats.timeline}>
+                    <AreaChart data={stats.timeline}>
+                      <defs>
+                        <linearGradient id="timelineGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={theme.palette.primary.main} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={theme.palette.primary.main} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
                       <XAxis
                         dataKey="date"
@@ -391,15 +402,17 @@ export default function LinkDetailPage() {
                           borderRadius: 8,
                         }}
                       />
-                      <Line
+                      <Area
                         type="monotone"
                         dataKey="count"
                         stroke={theme.palette.primary.main}
                         strokeWidth={2}
-                        dot={{ r: 3 }}
+                        fill="url(#timelineGradient)"
+                        dot={{ r: 3, fill: theme.palette.primary.main }}
+                        activeDot={{ r: 5 }}
                         name="Clicks"
                       />
-                    </LineChart>
+                    </AreaChart>
                   </ResponsiveContainer>
                 )}
               </Box>
@@ -431,7 +444,7 @@ export default function LinkDetailPage() {
                             labelLine={{ strokeWidth: 1 }}
                           >
                             {stats.referrers.slice(0, 10).map((_, i) => (
-                              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                              <Cell key={i} fill={pieColors[i % pieColors.length]} />
                             ))}
                           </Pie>
                           <RTooltip />
@@ -514,7 +527,7 @@ export default function LinkDetailPage() {
                               labelLine={{ strokeWidth: 1 }}
                             >
                               {stats.browsers.map((_, i) => (
-                                <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                                <Cell key={i} fill={pieColors[i % pieColors.length]} />
                               ))}
                             </Pie>
                             <RTooltip />
@@ -543,7 +556,7 @@ export default function LinkDetailPage() {
                               labelLine={{ strokeWidth: 1 }}
                             >
                               {stats.operatingSystems.map((_, i) => (
-                                <Cell key={i} fill={PIE_COLORS[(i + 5) % PIE_COLORS.length]} />
+                                <Cell key={i} fill={pieColors[(i + 5) % pieColors.length]} />
                               ))}
                             </Pie>
                             <RTooltip />

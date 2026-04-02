@@ -8,9 +8,9 @@ import {
   Geography,
   ZoomableGroup,
 } from "react-simple-maps";
-import { getCountryInfo } from "@/lib/countries";
+import { getCountryInfo, ISO_NUMERIC_TO_ALPHA2 } from "@/lib/countries";
 
-const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const GEO_URL = "/data/countries-110m.json";
 
 interface CountryMapProps {
   countries: { code: string; count: number }[];
@@ -36,7 +36,7 @@ export default function CountryMapSection({
             <Geographies geography={GEO_URL}>
               {({ geographies }) =>
                 geographies.map((geo) => {
-                  const iso = geo.properties?.ISO_A2 ?? geo.id;
+                  const iso = ISO_NUMERIC_TO_ALPHA2[geo.id] ?? geo.id;
                   const clicks = countryClickMap[iso] || 0;
                   const intensity = clicks
                     ? 0.15 + (clicks / maxClicks) * 0.85
@@ -47,7 +47,7 @@ export default function CountryMapSection({
                       geography={geo}
                       fill={
                         clicks
-                          ? `rgba(25, 118, 210, ${intensity})`
+                          ? `color-mix(in srgb, ${theme.palette.primary.main} ${Math.round(intensity * 100)}%, transparent)`
                           : theme.palette.mode === "dark"
                             ? "#333"
                             : "#e0e0e0"
