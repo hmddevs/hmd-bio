@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `Preview: ${link.title || link.keyword} — HMD.bio`,
     description: `This short URL (hmd.bio/${link.keyword}) redirects to: ${link.url}`,
-    robots: { index: false, follow: false },
+    robots: link.isPasswordProtected ? { index: false, follow: false } : { index: true, follow: true },
     openGraph: {
       title: link.ogTitle || link.title || `hmd.bio/${link.keyword}`,
       description: link.ogDescription || `Redirects to: ${link.url}`,

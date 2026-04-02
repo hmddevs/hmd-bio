@@ -14,6 +14,7 @@
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
     "@sentry/nextjs": "^10.47.0",
+    "@tailwindcss/typography": "^0.5.19",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "bcryptjs": "^3.0.3",
@@ -29,6 +30,7 @@
     "react-simple-maps": "^3.0.0",
     "recharts": "^3.8.1",
     "sharp": "^0.34.5",
+    "swagger-ui-react": "^5.32.1",
     "ua-parser-js": "^2.0.9",
     "zod": "^4.3.6"
   },
@@ -40,6 +42,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-simple-maps": "^3.0.6",
+    "@types/swagger-ui-react": "^5.18.0",
     "@types/ua-parser-js": "^0.7.39",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
