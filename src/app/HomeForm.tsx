@@ -129,7 +129,7 @@ export default function HomeForm() {
         </div>
 
         <div className="flex gap-3">
-          <div className="flex items-center gap-2 flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="flex items-center flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
             <span className="text-gray-500 dark:text-gray-500 text-sm whitespace-nowrap">
               hmd.bio/
             </span>
