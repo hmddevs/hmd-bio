@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 
+export const dynamic = "force-dynamic";
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   await connectDB();
 
