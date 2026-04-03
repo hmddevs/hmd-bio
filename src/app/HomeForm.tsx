@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect, FormEvent } from "react";
 import Script from "next/script";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 declare global {
   interface Window {
@@ -34,6 +35,7 @@ const FEATURES = [
 ];
 
 export default function HomeForm() {
+  const { data: session } = useSession();
   const [url, setUrl] = useState("");
   const [keyword, setKeyword] = useState("");
   const [result, setResult] = useState<{
@@ -113,6 +115,38 @@ export default function HomeForm() {
 
   return (
     <>
+      {/* Top nav */}
+      <nav className="flex items-center justify-between mb-12">
+        <Link href="/" className="text-xl font-bold text-gray-900 dark:text-white">
+          HMD<span className="text-blue-600 dark:text-blue-400">.bio</span>
+        </Link>
+        <div className="flex items-center gap-3">
+          {session ? (
+            <Link
+              href={session.user?.role === "admin" ? "/admin" : "/dashboard"}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            >
+              Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/signup"
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+              >
+                Sign Up
+              </Link>
+            </>
+          )}
+        </div>
+      </nav>
+
       {/* Hero section */}
       <section className="text-center mb-12">
         <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-gray-900 dark:text-white">
@@ -121,20 +155,6 @@ export default function HomeForm() {
         <p className="mt-3 text-lg text-gray-500 dark:text-gray-400 max-w-md mx-auto">
           Shorten links, track clicks, and share with confidence.
         </p>
-        <div className="mt-5 flex items-center justify-center gap-3">
-          <Link
-            href="/login"
-            className="px-5 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          >
-            Sign In
-          </Link>
-          <Link
-            href="/signup"
-            className="px-5 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-          >
-            Create Account
-          </Link>
-        </div>
       </section>
 
       {SITE_KEY && (
@@ -274,7 +294,9 @@ export default function HomeForm() {
             <Link href="/cookies" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Cookies</Link>
             <Link href="/aup" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">AUP</Link>
             <Link href="/docs" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">API Docs</Link>
-            <Link href="/login" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Sign In</Link>
+            {!session && (
+              <Link href="/login" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Sign In</Link>
+            )}
           </nav>
         </div>
       </footer>

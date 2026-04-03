@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SessionProvider } from "next-auth/react";
 import HomeForm from "./HomeForm";
 
 export const metadata: Metadata = {
@@ -36,7 +37,9 @@ export default function HomePage() {
             }),
           }}
         />
-        <HomeForm />
+        <SessionProvider>
+          <HomeForm />
+        </SessionProvider>
       </div>
     </main>
   );
