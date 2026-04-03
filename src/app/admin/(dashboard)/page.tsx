@@ -8,6 +8,8 @@ export default async function AdminDashboard() {
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
   const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const [
@@ -17,6 +19,8 @@ export default async function AdminDashboard() {
     recentLinks,
     recentActivity,
     weeklyTrend,
+    monthlyTrend,
+    quarterlyTrend,
     topCountries,
     linksCreatedLast7d,
     activeLinks,
@@ -44,6 +48,33 @@ export default async function AdminDashboard() {
       {
         $group: {
           _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    // 30-day daily trend
+    Click.aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    // 90-day weekly trend
+    Click.aggregate([
+      { $match: { createdAt: { $gte: ninetyDaysAgo } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: { $dateTrunc: { date: "$createdAt", unit: "week" } },
+            },
+          },
           count: { $sum: 1 },
         },
       },
@@ -95,6 +126,14 @@ export default async function AdminDashboard() {
         })),
         recentActivity,
         weeklyTrend: weeklyTrend.map((d: { _id: string; count: number }) => ({
+          date: d._id,
+          count: d.count,
+        })),
+        monthlyTrend: monthlyTrend.map((d: { _id: string; count: number }) => ({
+          date: d._id,
+          count: d.count,
+        })),
+        quarterlyTrend: quarterlyTrend.map((d: { _id: string; count: number }) => ({
           date: d._id,
           count: d.count,
         })),

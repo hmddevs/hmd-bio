@@ -77,6 +77,19 @@ export default function RootLayout({
       <head>
         <link rel="dns-prefetch" href="https://challenges.cloudflare.com" />
         <link rel="preconnect" href="https://challenges.cloudflare.com" crossOrigin="anonymous" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "HMD Developments",
+              url: "https://hmddevs.org",
+              logo: "https://hmd.bio/icon",
+              sameAs: ["https://github.com/hmd-corp"],
+            }),
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <a
