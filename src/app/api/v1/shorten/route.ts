@@ -15,12 +15,7 @@ import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit: 30 req/min per IP
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const rl = rateLimit(`shorten:${ip}`, { limit: 30, windowMs: 60_000 });
-    if (!rl.allowed) {
-      return apiError("Rate limit exceeded. Try again later.", 429);
-    }
 
     const body = await request.json();
     const parsed = shortenSchema.safeParse(body);
@@ -34,7 +29,7 @@ export async function POST(request: NextRequest) {
     const secretKey = process.env.TURNSTILE_SECRET_KEY;
     let authenticated = false;
 
-    // Check API key first
+    // Check API key / session first
     const user = await authenticateRequest(request);
     if (user) {
       authenticated = true;
@@ -52,6 +47,14 @@ export async function POST(request: NextRequest) {
     // If TURNSTILE_SECRET_KEY is set (production) and neither auth method worked → reject
     if (!authenticated && secretKey) {
       return apiError("Authentication required. Provide a Turnstile token or Bearer API key.", 401);
+    }
+
+    // Rate limit: 100/min for authenticated users, 30/min for anonymous
+    const rateKey = user ? `shorten:user:${user.id}` : `shorten:${ip}`;
+    const rateMax = user ? 100 : 30;
+    const rl = rateLimit(rateKey, { limit: rateMax, windowMs: 60_000 });
+    if (!rl.allowed) {
+      return apiError("Rate limit exceeded. Try again later.", 429);
     }
 
     // Protocol check
@@ -88,6 +91,7 @@ export async function POST(request: NextRequest) {
       ip,
       clicks: 0,
       statusCode: 301,
+      ...(user ? { owner: user.id } : {}),
     });
 
     const base = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");

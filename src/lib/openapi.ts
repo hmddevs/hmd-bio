@@ -11,8 +11,9 @@ export const openApiPrivateSpec = {
   },
   servers: [{ url: "https://hmd.bio", description: "Production" }],
   tags: [
-    { name: "Links", description: "Link management (auth required)" },
-    { name: "Stats", description: "Analytics & statistics" },
+    { name: "Links", description: "Link management (admin only)" },
+    { name: "Stats", description: "Analytics & statistics (admin only)" },
+    { name: "Users", description: "User management (admin only)" },
     { name: "Auth", description: "API keys & password management (session only)" },
   ],
   paths: {
@@ -296,6 +297,56 @@ export const openApiPrivateSpec = {
         responses: {
           "200": { description: "Password changed" },
           "400": { description: "Invalid current password" },
+        },
+      },
+    },
+    "/api/v1/admin/users": {
+      get: {
+        tags: ["Users"],
+        summary: "List all users",
+        security: [{ bearerAuth: [] }, { session: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } },
+          { name: "search", in: "query", schema: { type: "string" } },
+        ],
+        responses: {
+          "200": { description: "Paginated user list with link counts" },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Admin access required" },
+        },
+      },
+    },
+    "/api/v1/admin/users/{id}": {
+      patch: {
+        tags: ["Users"],
+        summary: "Modify a user",
+        security: [{ bearerAuth: [] }, { session: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string" } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["action"],
+                properties: {
+                  action: {
+                    type: "string",
+                    enum: ["disable", "enable", "verify", "promote", "demote"],
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "User updated" },
+          "400": { description: "Invalid action or self-modification" },
+          "403": { description: "Admin access required" },
+          "404": { description: "User not found" },
         },
       },
     },
