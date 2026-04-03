@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Owner-type filter: "public" (no owner), "admin", or a specific user id
-    const ownerType = searchParams.get("ownerType");
+    const ownerType = searchParams["ownerType"];
     if (ownerType === "public") {
       filter.owner = null;
     } else if (ownerType && ownerType !== "all") {

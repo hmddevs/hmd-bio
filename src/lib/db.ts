@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI!;
-
-if (!MONGODB_URI) {
-  throw new Error("Please define the MONGODB_URI environment variable");
+function getMongoURI(): string {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("Please define the MONGODB_URI environment variable");
+  }
+  return uri;
 }
 
 interface MongooseCache {
@@ -23,7 +25,7 @@ const RETRY_DELAY_MS = 1000;
 
 async function connectWithRetry(attempt = 1): Promise<typeof mongoose> {
   try {
-    return await mongoose.connect(MONGODB_URI, {
+    return await mongoose.connect(getMongoURI(), {
       bufferCommands: false,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,

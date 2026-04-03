@@ -13,7 +13,7 @@ export interface ILink extends Document {
   ogTitle?: string;
   ogDescription?: string;
   ogImage?: string;
-  owner?: Types.ObjectId;
+  owner?: Types.ObjectId | null;
   createdVia: "form" | "api" | "bulk" | "dashboard";
   createdAt: Date;
   updatedAt: Date;
