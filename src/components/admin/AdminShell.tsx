@@ -23,6 +23,7 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import LinkIcon from "@mui/icons-material/Link";
+import TouchAppIcon from "@mui/icons-material/TouchApp";
 import PeopleIcon from "@mui/icons-material/People";
 import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -32,6 +33,7 @@ const DRAWER_WIDTH = 260;
 const navItems = [
   { label: "Dashboard", href: "/admin", icon: <DashboardIcon /> },
   { label: "Links", href: "/admin/links", icon: <LinkIcon /> },
+  { label: "Clicks", href: "/admin/clicks", icon: <TouchAppIcon /> },
   { label: "Users", href: "/admin/users", icon: <PeopleIcon /> },
   { label: "Settings", href: "/admin/settings", icon: <SettingsIcon /> },
 ];

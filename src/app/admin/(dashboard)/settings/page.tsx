@@ -49,10 +49,6 @@ export default function SettingsPage() {
   const [keysLoading, setKeysLoading] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (tab === 1) loadKeys();
-  }, [tab]);
-
   async function loadKeys() {
     setKeysLoading(true);
     const res = await fetch("/api/v1/auth/api-keys");
@@ -60,6 +56,11 @@ export default function SettingsPage() {
     if (data.success) setApiKeys(data.data?.keys ?? []);
     setKeysLoading(false);
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on tab change
+    if (tab === 1) loadKeys();
+  }, [tab]);
 
   async function handlePasswordChange() {
     if (newPassword !== confirmPassword) {
