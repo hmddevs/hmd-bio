@@ -49,10 +49,6 @@ export default function UserSettingsPage() {
   const [keysLoading, setKeysLoading] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (tab === 1) loadKeys();
-  }, [tab]);
-
   async function loadKeys() {
     setKeysLoading(true);
     try {
@@ -64,6 +60,11 @@ export default function UserSettingsPage() {
     }
     setKeysLoading(false);
   }
+
+  useEffect(() => {
+    if (tab === 1) loadKeys();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   async function handlePasswordChange() {
     if (newPassword !== confirmPassword) {
