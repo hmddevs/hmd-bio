@@ -23,7 +23,8 @@ export async function POST(
       return apiError("Link not found", 404);
     }
 
-    const shortUrl = `${process.env.AUTH_URL || "https://hmd.bio"}/${keyword}`;
+    const base = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
+    const shortUrl = `${base}/${keyword}`;
     const svg = await QRCode.toString(shortUrl, { type: "svg", margin: 2 });
 
     return apiSuccess({ keyword, shortUrl, svg });

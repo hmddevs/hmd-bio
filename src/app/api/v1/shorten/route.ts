@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
       statusCode: 301,
     });
 
-    const shortUrl = `${process.env.AUTH_URL || "https://hmd.bio"}/${link.keyword}`;
+    const base = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
+    const shortUrl = `${base}/${link.keyword}`;
 
     return apiSuccess(
       {

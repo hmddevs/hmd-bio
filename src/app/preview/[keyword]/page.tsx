@@ -32,7 +32,8 @@ export default async function PreviewPage({ params }: Props) {
   const link = await Link.findOne({ keyword }).lean();
   if (!link) notFound();
 
-  const shortUrl = `${process.env.AUTH_URL || "https://hmd.bio"}/${link.keyword}`;
+  const base = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
+  const shortUrl = `${base}/${link.keyword}`;
 
   return (
     <main id="main-content" className="flex-1 flex items-center justify-center px-4 py-16">
