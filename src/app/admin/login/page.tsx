@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import NextLink from "next/link";
@@ -124,7 +124,9 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <MuiProvider>
-      <LoginForm />
+      <Suspense>
+        <LoginForm />
+      </Suspense>
     </MuiProvider>
   );
 }
