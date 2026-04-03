@@ -119,8 +119,9 @@ export const openApiPublicSpec = {
     },
     "/api/v1/expand": {
       get: {
-        tags: ["Public"],
+        tags: ["Links"],
         summary: "Expand a short link",
+        security: [{ ApiKeyAuth: [] }],
         parameters: [
           {
             name: "keyword",
@@ -152,6 +153,7 @@ export const openApiPublicSpec = {
               },
             },
           },
+          "401": { description: "Unauthorized — API key required" },
           "404": { description: "Link not found" },
           "429": { description: "Rate limited (60 req/min)" },
         },
@@ -159,8 +161,9 @@ export const openApiPublicSpec = {
     },
     "/api/v1/stats": {
       get: {
-        tags: ["Public"],
-        summary: "Get public stats",
+        tags: ["Stats"],
+        summary: "Get global stats",
+        security: [{ ApiKeyAuth: [] }],
         responses: {
           "200": {
             description: "Global statistics",
@@ -182,6 +185,7 @@ export const openApiPublicSpec = {
               },
             },
           },
+          "401": { description: "Unauthorized — API key required" },
           "429": { description: "Rate limited (60 req/min)" },
         },
       },
