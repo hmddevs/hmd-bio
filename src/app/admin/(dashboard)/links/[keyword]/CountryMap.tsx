@@ -73,8 +73,8 @@ export default function CountryMapSection({
             <Geographies geography={GEO_URL}>
               {({ geographies }) =>
                 geographies.map((geo) => {
-                  const iso = ISO_NUMERIC_TO_ALPHA2[geo.id] ?? geo.id;
-                  const clicks = countryClickMap[iso] || 0;
+                  const iso = ISO_NUMERIC_TO_ALPHA2[geo.id] ?? geo.id ?? "";
+                  const clicks = iso ? (countryClickMap[iso] || 0) : 0;
                   const info = getCountryInfo(iso);
                   const label = `${info.flag} ${info.name}: ${clicks.toLocaleString()} click${clicks !== 1 ? "s" : ""}`;
                   return (

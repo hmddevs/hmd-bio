@@ -290,15 +290,18 @@ export const ISO_NUMERIC_TO_ALPHA2: Record<string, string> = {
   "894": "ZM",
 };
 
-export function getCountryName(code: string): string {
+export function getCountryName(code: string | undefined | null): string {
+  if (!code) return "Unknown";
   return COUNTRIES[code.toUpperCase()]?.name ?? code;
 }
 
-export function getCountryFlag(code: string): string {
+export function getCountryFlag(code: string | undefined | null): string {
+  if (!code) return "🏳️";
   return COUNTRIES[code.toUpperCase()]?.flag ?? "🏳️";
 }
 
-export function getCountryInfo(code: string): { name: string; flag: string } {
+export function getCountryInfo(code: string | undefined | null): { name: string; flag: string } {
+  if (!code) return { name: "Unknown", flag: "🏳️" };
   const upper = code.toUpperCase();
   return COUNTRIES[upper] ?? { name: code, flag: "🏳️" };
 }
