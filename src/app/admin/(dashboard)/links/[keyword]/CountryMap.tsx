@@ -10,9 +10,9 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tooltip as MuiTooltip,
+  LinearProgress,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useTheme, alpha } from "@mui/material/styles";
 import {
   ComposableMap,
   Geographies,
@@ -36,16 +36,19 @@ export default function CountryMapSection({
 }: CountryMapProps) {
   const theme = useTheme();
   const [tooltipContent, setTooltipContent] = useState("");
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const totalClicks = countries.reduce((sum, c) => sum + c.count, 0);
+  const topCount = countries[0]?.count ?? 1;
 
   function getColor(clicks: number): string {
     if (!clicks) {
-      return theme.palette.mode === "dark" ? "#333" : "#e0e0e0";
+      return theme.palette.mode === "dark"
+        ? alpha(theme.palette.action.hover, 0.08)
+        : alpha(theme.palette.action.hover, 0.15);
     }
-    // Stronger scale: min 30% intensity, log-based for better contrast
     const ratio = Math.log(clicks + 1) / Math.log(maxClicks + 1);
-    const intensity = 0.3 + ratio * 0.7;
-    return `color-mix(in srgb, ${theme.palette.primary.main} ${Math.round(intensity * 100)}%, ${theme.palette.mode === "dark" ? "#1e1e1e" : "#ffffff"})`;
+    const intensity = 0.2 + ratio * 0.8;
+    return alpha(theme.palette.primary.main, intensity);
   }
 
   return (
@@ -58,11 +61,13 @@ export default function CountryMapSection({
           borderRadius: 2,
           overflow: "hidden",
           position: "relative",
+          bgcolor: theme.palette.mode === "dark" ? "grey.900" : "grey.50",
         }}
+        onMouseLeave={() => setTooltipContent("")}
       >
         <ComposableMap
           projectionConfig={{ rotate: [-10, 0, 0], scale: 147 }}
-          style={{ width: "100%", height: "auto" }}
+          style={{ width: "100%", height: "auto", display: "block" }}
         >
           <ZoomableGroup>
             <Geographies geography={GEO_URL}>
@@ -73,45 +78,56 @@ export default function CountryMapSection({
                   const info = getCountryInfo(iso);
                   const label = `${info.flag} ${info.name}: ${clicks.toLocaleString()} click${clicks !== 1 ? "s" : ""}`;
                   return (
-                    <MuiTooltip key={geo.rsmKey} title={label} arrow placement="top">
-                      <Geography
-                        geography={geo}
-                        fill={getColor(clicks)}
-                        stroke={theme.palette.divider}
-                        strokeWidth={0.5}
-                        onMouseEnter={() => setTooltipContent(label)}
-                        onMouseLeave={() => setTooltipContent("")}
-                        style={{
-                          default: { outline: "none" },
-                          hover: {
-                            outline: "none",
-                            fill: theme.palette.primary.light,
-                            cursor: "pointer",
-                          },
-                          pressed: { outline: "none" },
-                        }}
-                      />
-                    </MuiTooltip>
+                    <Geography
+                      key={geo.rsmKey}
+                      geography={geo}
+                      fill={getColor(clicks)}
+                      stroke={alpha(theme.palette.divider, 0.4)}
+                      strokeWidth={0.4}
+                      onMouseEnter={(evt) => {
+                        setTooltipContent(label);
+                        setTooltipPos({ x: evt.clientX, y: evt.clientY });
+                      }}
+                      onMouseMove={(evt) => {
+                        setTooltipPos({ x: evt.clientX, y: evt.clientY });
+                      }}
+                      onMouseLeave={() => setTooltipContent("")}
+                      style={{
+                        default: { outline: "none" },
+                        hover: {
+                          outline: "none",
+                          fill: clicks
+                            ? alpha(theme.palette.primary.main, 0.9)
+                            : alpha(theme.palette.primary.light, 0.3),
+                          cursor: "pointer",
+                        },
+                        pressed: { outline: "none" },
+                      }}
+                    />
                   );
                 })
               }
             </Geographies>
           </ZoomableGroup>
         </ComposableMap>
+
+        {/* Floating tooltip that follows cursor */}
         {tooltipContent && (
           <Box
             sx={{
-              position: "absolute",
-              bottom: 8,
-              left: 8,
+              position: "fixed",
+              left: tooltipPos.x + 12,
+              top: tooltipPos.y - 32,
               bgcolor: "background.paper",
               px: 1.5,
-              py: 0.5,
+              py: 0.75,
               borderRadius: 1,
-              border: 1,
-              borderColor: "divider",
+              boxShadow: 3,
               fontSize: 13,
+              fontWeight: 500,
               pointerEvents: "none",
+              zIndex: 1500,
+              whiteSpace: "nowrap",
             }}
           >
             {tooltipContent}
@@ -124,8 +140,9 @@ export default function CountryMapSection({
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
+              <TableCell sx={{ fontWeight: 600, width: 40 }}>#</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
+              <TableCell sx={{ fontWeight: 600, minWidth: 120 }}>Distribution</TableCell>
               <TableCell align="right" sx={{ fontWeight: 600 }}>Clicks</TableCell>
               <TableCell align="right" sx={{ fontWeight: 600 }}>%</TableCell>
             </TableRow>
@@ -135,13 +152,35 @@ export default function CountryMapSection({
               const info = getCountryInfo(c.code);
               const pct = totalClicks > 0 ? ((c.count / totalClicks) * 100).toFixed(1) : "0";
               return (
-                <TableRow key={c.code}>
-                  <TableCell>{i + 1}</TableCell>
+                <TableRow key={c.code} hover>
+                  <TableCell sx={{ color: "text.secondary" }}>{i + 1}</TableCell>
                   <TableCell>
-                    {info.flag} {info.name}
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography component="span" sx={{ fontSize: 18, lineHeight: 1 }}>
+                        {info.flag}
+                      </Typography>
+                      <Typography variant="body2" fontWeight={500}>
+                        {info.name}
+                      </Typography>
+                    </Box>
                   </TableCell>
-                  <TableCell align="right">{c.count.toLocaleString()}</TableCell>
-                  <TableCell align="right">{pct}%</TableCell>
+                  <TableCell>
+                    <LinearProgress
+                      variant="determinate"
+                      value={(c.count / topCount) * 100}
+                      sx={{ height: 6, borderRadius: 3 }}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" fontWeight={600}>
+                      {c.count.toLocaleString()}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" color="text.secondary">
+                      {pct}%
+                    </Typography>
+                  </TableCell>
                 </TableRow>
               );
             })}
