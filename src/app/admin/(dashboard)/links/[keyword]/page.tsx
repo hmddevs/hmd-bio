@@ -44,20 +44,8 @@ import LinkIcon from "@mui/icons-material/Link";
 import TimelineIcon from "@mui/icons-material/Timeline";
 import StarIcon from "@mui/icons-material/Star";
 import { useTheme } from "@mui/material/styles";
-import {
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  Tooltip as RTooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Legend,
-  PieLabelRenderProps,
-} from "recharts";
+import { LineChart } from "@mui/x-charts/LineChart";
+import { PieChart as MuiPieChart } from "@mui/x-charts/PieChart";
 import { getCountryInfo } from "@/lib/countries";
 
 // Lazy-load the heavy map component to reduce initial bundle
@@ -379,41 +367,40 @@ export default function LinkDetailPage() {
                 {stats.timeline.length === 0 ? (
                   <Typography color="text.secondary">No timeline data yet</Typography>
                 ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={stats.timeline}>
-                      <defs>
-                        <linearGradient id="timelineGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={theme.palette.primary.main} stopOpacity={0.3} />
-                          <stop offset="95%" stopColor={theme.palette.primary.main} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 11 }}
-                        stroke={theme.palette.text.secondary}
-                        tickFormatter={(v) => v.slice(5)}
-                      />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke={theme.palette.text.secondary} />
-                      <RTooltip
-                        contentStyle={{
-                          backgroundColor: theme.palette.background.paper,
-                          border: `1px solid ${theme.palette.divider}`,
-                          borderRadius: 8,
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="count"
-                        stroke={theme.palette.primary.main}
-                        strokeWidth={2}
-                        fill="url(#timelineGradient)"
-                        dot={{ r: 3, fill: theme.palette.primary.main }}
-                        activeDot={{ r: 5 }}
-                        name="Clicks"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <LineChart
+                    height={300}
+                    series={[
+                      {
+                        data: stats.timeline.map((d) => d.count),
+                        area: true,
+                        curve: "monotoneX",
+                        showMark: false,
+                        label: "Clicks",
+                        color: theme.palette.primary.main,
+                      },
+                    ]}
+                    xAxis={[
+                      {
+                        data: stats.timeline.map((d) => d.date),
+                        scaleType: "point",
+                        tickLabelStyle: {
+                          fontSize: 11,
+                          fill: theme.palette.text.secondary,
+                        },
+                        valueFormatter: (v: string) => v.slice(5),
+                      },
+                    ]}
+                    yAxis={[
+                      {
+                        tickLabelStyle: {
+                          fontSize: 11,
+                          fill: theme.palette.text.secondary,
+                        },
+                      },
+                    ]}
+                    grid={{ horizontal: true, vertical: true }}
+                    hideLegend
+                  />
                 )}
               </Box>
             )}
@@ -429,27 +416,27 @@ export default function LinkDetailPage() {
                 ) : (
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <ResponsiveContainer width="100%" height={280}>
-                        <PieChart>
-                          <Pie
-                            data={stats.referrers.slice(0, 10)}
-                            dataKey="count"
-                            nameKey="referrer"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={100}
-                            label={(props: PieLabelRenderProps) =>
-                              `${props.name ?? ""} (${((props.percent ?? 0) * 100).toFixed(0)}%)`
-                            }
-                            labelLine={{ strokeWidth: 1 }}
-                          >
-                            {stats.referrers.slice(0, 10).map((_, i) => (
-                              <Cell key={i} fill={pieColors[i % pieColors.length]} />
-                            ))}
-                          </Pie>
-                          <RTooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      <MuiPieChart
+                        height={280}
+                        series={[
+                          {
+                            data: stats.referrers.slice(0, 10).map((r, i) => ({
+                              id: i,
+                              value: r.count,
+                              label: r.referrer,
+                              color: pieColors[i % pieColors.length],
+                            })),
+                            innerRadius: 40,
+                            paddingAngle: 2,
+                            cornerRadius: 4,
+                          },
+                        ]}
+                        slotProps={{
+                          legend: {
+                            direction: "vertical",
+                          },
+                        }}
+                      />
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
                       <List dense disablePadding>
@@ -512,28 +499,27 @@ export default function LinkDetailPage() {
                       {stats.browsers.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">No data</Typography>
                       ) : (
-                        <ResponsiveContainer width="100%" height={280}>
-                          <PieChart>
-                            <Pie
-                              data={stats.browsers}
-                              dataKey="count"
-                              nameKey="name"
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={90}
-                              label={(props: PieLabelRenderProps) =>
-                                `${props.name ?? ""} (${((props.percent ?? 0) * 100).toFixed(0)}%)`
-                              }
-                              labelLine={{ strokeWidth: 1 }}
-                            >
-                              {stats.browsers.map((_, i) => (
-                                <Cell key={i} fill={pieColors[i % pieColors.length]} />
-                              ))}
-                            </Pie>
-                            <RTooltip />
-                            <Legend />
-                          </PieChart>
-                        </ResponsiveContainer>
+                        <MuiPieChart
+                          height={280}
+                          series={[
+                            {
+                              data: stats.browsers.map((b, i) => ({
+                                id: i,
+                                value: b.count,
+                                label: b.name,
+                                color: pieColors[i % pieColors.length],
+                              })),
+                              innerRadius: 30,
+                              paddingAngle: 2,
+                              cornerRadius: 4,
+                            },
+                          ]}
+                          slotProps={{
+                            legend: {
+                              direction: "horizontal",
+                            },
+                          }}
+                        />
                       )}
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
@@ -541,28 +527,27 @@ export default function LinkDetailPage() {
                       {stats.operatingSystems.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">No data</Typography>
                       ) : (
-                        <ResponsiveContainer width="100%" height={280}>
-                          <PieChart>
-                            <Pie
-                              data={stats.operatingSystems}
-                              dataKey="count"
-                              nameKey="name"
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={90}
-                              label={(props: PieLabelRenderProps) =>
-                                `${props.name ?? ""} (${((props.percent ?? 0) * 100).toFixed(0)}%)`
-                              }
-                              labelLine={{ strokeWidth: 1 }}
-                            >
-                              {stats.operatingSystems.map((_, i) => (
-                                <Cell key={i} fill={pieColors[(i + 5) % pieColors.length]} />
-                              ))}
-                            </Pie>
-                            <RTooltip />
-                            <Legend />
-                          </PieChart>
-                        </ResponsiveContainer>
+                        <MuiPieChart
+                          height={280}
+                          series={[
+                            {
+                              data: stats.operatingSystems.map((os, i) => ({
+                                id: i,
+                                value: os.count,
+                                label: os.name,
+                                color: pieColors[(i + 5) % pieColors.length],
+                              })),
+                              innerRadius: 30,
+                              paddingAngle: 2,
+                              cornerRadius: 4,
+                            },
+                          ]}
+                          slotProps={{
+                            legend: {
+                              direction: "horizontal",
+                            },
+                          }}
+                        />
                       )}
                     </Grid>
                   </Grid>

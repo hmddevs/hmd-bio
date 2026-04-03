@@ -4,6 +4,7 @@ export const shortenSchema = z.object({
   url: z.string().url("Invalid URL"),
   keyword: z
     .string()
+    .min(2, "Keyword must be at least 2 characters")
     .regex(/^[a-zA-Z0-9_-]*$/, "Only alphanumeric, hyphens, and underscores allowed")
     .max(100)
     .optional(),
@@ -16,6 +17,7 @@ export const editLinkSchema = z.object({
   title: z.string().max(500).optional(),
   keyword: z
     .string()
+    .min(2, "Keyword must be at least 2 characters")
     .regex(/^[a-zA-Z0-9_-]+$/)
     .max(100)
     .optional(),
