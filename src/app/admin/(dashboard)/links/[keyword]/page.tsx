@@ -45,7 +45,9 @@ import TimelineIcon from "@mui/icons-material/Timeline";
 import StarIcon from "@mui/icons-material/Star";
 import { useTheme } from "@mui/material/styles";
 import { LineChart } from "@mui/x-charts/LineChart";
+import { areaElementClasses } from "@mui/x-charts/LineChart";
 import { PieChart as MuiPieChart } from "@mui/x-charts/PieChart";
+import { pieArcLabelClasses } from "@mui/x-charts/PieChart";
 import { getCountryInfo } from "@/lib/countries";
 
 // Lazy-load the heavy map component to reduce initial bundle
@@ -368,12 +370,12 @@ export default function LinkDetailPage() {
                   <Typography color="text.secondary">No timeline data yet</Typography>
                 ) : (
                   <LineChart
-                    height={300}
+                    height={320}
                     series={[
                       {
                         data: stats.timeline.map((d) => d.count),
                         area: true,
-                        curve: "monotoneX",
+                        curve: "natural",
                         showMark: false,
                         label: "Clicks",
                         color: theme.palette.primary.main,
@@ -398,9 +400,28 @@ export default function LinkDetailPage() {
                         },
                       },
                     ]}
-                    grid={{ horizontal: true, vertical: true }}
+                    grid={{ horizontal: true }}
                     hideLegend
-                  />
+                    sx={{
+                      [`& .${areaElementClasses.root}`]: {
+                        fill: "url(#timeline-gradient)",
+                      },
+                      "& .MuiLineElement-root": {
+                        strokeWidth: 2.5,
+                      },
+                      "& .MuiChartsGrid-horizontalLine": {
+                        strokeDasharray: "4 4",
+                        strokeOpacity: 0.3,
+                      },
+                    }}
+                  >
+                    <defs>
+                      <linearGradient id="timeline-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={theme.palette.primary.main} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={theme.palette.primary.main} stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                  </LineChart>
                 )}
               </Box>
             )}
@@ -417,7 +438,7 @@ export default function LinkDetailPage() {
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, md: 6 }}>
                       <MuiPieChart
-                        height={280}
+                        height={300}
                         series={[
                           {
                             data: stats.referrers.slice(0, 10).map((r, i) => ({
@@ -426,11 +447,23 @@ export default function LinkDetailPage() {
                               label: r.referrer,
                               color: pieColors[i % pieColors.length],
                             })),
-                            innerRadius: 40,
+                            innerRadius: 50,
+                            outerRadius: 110,
                             paddingAngle: 2,
-                            cornerRadius: 4,
+                            cornerRadius: 5,
+                            arcLabel: (item) => `${item.value}`,
+                            arcLabelMinAngle: 25,
+                            highlightScope: { fade: "global", highlight: "item" },
+                            faded: { additionalRadius: -8, color: "gray" },
                           },
                         ]}
+                        sx={{
+                          [`& .${pieArcLabelClasses.root}`]: {
+                            fontWeight: 600,
+                            fontSize: 11,
+                            fill: "#fff",
+                          },
+                        }}
                         slotProps={{
                           legend: {
                             direction: "vertical",
@@ -495,12 +528,12 @@ export default function LinkDetailPage() {
                 ) : (
                   <Grid container spacing={3}>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="subtitle2" gutterBottom>Browsers</Typography>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>Browsers</Typography>
                       {stats.browsers.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">No data</Typography>
                       ) : (
                         <MuiPieChart
-                          height={280}
+                          height={300}
                           series={[
                             {
                               data: stats.browsers.map((b, i) => ({
@@ -509,11 +542,23 @@ export default function LinkDetailPage() {
                                 label: b.name,
                                 color: pieColors[i % pieColors.length],
                               })),
-                              innerRadius: 30,
+                              innerRadius: 40,
+                              outerRadius: 100,
                               paddingAngle: 2,
-                              cornerRadius: 4,
+                              cornerRadius: 5,
+                              arcLabel: "formattedValue",
+                              arcLabelMinAngle: 30,
+                              highlightScope: { fade: "global", highlight: "item" },
+                              faded: { additionalRadius: -6, color: "gray" },
                             },
                           ]}
+                          sx={{
+                            [`& .${pieArcLabelClasses.root}`]: {
+                              fontWeight: 600,
+                              fontSize: 11,
+                              fill: "#fff",
+                            },
+                          }}
                           slotProps={{
                             legend: {
                               direction: "horizontal",
@@ -523,12 +568,12 @@ export default function LinkDetailPage() {
                       )}
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="subtitle2" gutterBottom>Operating Systems</Typography>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>Operating Systems</Typography>
                       {stats.operatingSystems.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">No data</Typography>
                       ) : (
                         <MuiPieChart
-                          height={280}
+                          height={300}
                           series={[
                             {
                               data: stats.operatingSystems.map((os, i) => ({
@@ -537,11 +582,23 @@ export default function LinkDetailPage() {
                                 label: os.name,
                                 color: pieColors[(i + 5) % pieColors.length],
                               })),
-                              innerRadius: 30,
+                              innerRadius: 40,
+                              outerRadius: 100,
                               paddingAngle: 2,
-                              cornerRadius: 4,
+                              cornerRadius: 5,
+                              arcLabel: "formattedValue",
+                              arcLabelMinAngle: 30,
+                              highlightScope: { fade: "global", highlight: "item" },
+                              faded: { additionalRadius: -6, color: "gray" },
                             },
                           ]}
+                          sx={{
+                            [`& .${pieArcLabelClasses.root}`]: {
+                              fontWeight: 600,
+                              fontSize: 11,
+                              fill: "#fff",
+                            },
+                          }}
                           slotProps={{
                             legend: {
                               direction: "horizontal",

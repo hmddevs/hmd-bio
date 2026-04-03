@@ -21,6 +21,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AvTimerIcon from "@mui/icons-material/AvTimer";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { BarChart as MuiBarChart } from "@mui/x-charts/BarChart";
+import { areaElementClasses } from "@mui/x-charts/LineChart";
 import { useTheme } from "@mui/material/styles";
 import { useRouter } from "next/navigation";
 import { getCountryName, getCountryFlag } from "@/lib/countries";
@@ -121,13 +122,13 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
               </Typography>
               {weeklyTrend.length > 0 ? (
                 <LineChart
-                  height={120}
+                  height={140}
                   series={[
                     {
                       data: weeklyTrend.map((d) => d.count),
                       area: true,
-                      curve: "monotoneX",
-                      showMark: false,
+                      curve: "natural",
+                      showMark: ({ index }) => index === weeklyTrend.length - 1,
                       color: theme.palette.primary.main,
                     },
                   ]}
@@ -135,14 +136,29 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                     {
                       data: weeklyTrend.map((d) => d.date),
                       scaleType: "point",
-                      tickLabelStyle: { display: "none" },
+                      tickLabelStyle: { fontSize: 10, fill: theme.palette.text.secondary },
+                      valueFormatter: (v: string) => v.slice(5),
                     },
                   ]}
                   yAxis={[{ tickLabelStyle: { display: "none" } }]}
-                  margin={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  margin={{ top: 10, bottom: 24, left: 10, right: 10 }}
                   hideLegend
-                  grid={{ horizontal: true }}
-                />
+                  sx={{
+                    [`& .${areaElementClasses.root}`]: {
+                      fill: `url(#sparkline-gradient)`,
+                    },
+                    "& .MuiLineElement-root": {
+                      strokeWidth: 2.5,
+                    },
+                  }}
+                >
+                  <defs>
+                    <linearGradient id="sparkline-gradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={theme.palette.primary.main} stopOpacity={0.4} />
+                      <stop offset="100%" stopColor={theme.palette.primary.main} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                </LineChart>
               ) : (
                 <Typography variant="body2" color="text.secondary">No data yet</Typography>
               )}
@@ -276,7 +292,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                   24-Hour Activity
                 </Typography>
                 <MuiBarChart
-                  height={220}
+                  height={260}
                   dataset={chartData}
                   series={[
                     {
@@ -290,7 +306,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                       dataKey: "hour",
                       scaleType: "band",
                       tickLabelStyle: {
-                        fontSize: 12,
+                        fontSize: 11,
                         fill: theme.palette.text.secondary,
                       },
                     },
@@ -298,14 +314,20 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                   yAxis={[
                     {
                       tickLabelStyle: {
-                        fontSize: 12,
+                        fontSize: 11,
                         fill: theme.palette.text.secondary,
                       },
                     },
                   ]}
                   grid={{ horizontal: true }}
-                  borderRadius={4}
+                  borderRadius={6}
                   hideLegend
+                  sx={{
+                    "& .MuiChartsGrid-horizontalLine": {
+                      strokeDasharray: "4 4",
+                      strokeOpacity: 0.3,
+                    },
+                  }}
                 />
               </CardContent>
             </Card>
