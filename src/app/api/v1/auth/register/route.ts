@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       passwordHash,
       role: "user",
       isVerified: false,
-      isDisabled: false,
+      status: "pending",
       verificationToken,
       verificationExpires,
     });
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     return apiSuccess(
       {
         message: emailSent
-          ? "Account created. Check your email to verify."
+          ? "Account created. Check your email to verify. After verification, an admin will review your account."
           : "Account created. Verification email could not be sent — contact support.",
         username,
       },

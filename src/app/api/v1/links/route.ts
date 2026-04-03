@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
 
     const [links, total] = await Promise.all([
       Link.find(filter)
+        .populate("owner", "username email")
         .sort(sortObj)
         .skip((page - 1) * limit)
         .limit(limit)

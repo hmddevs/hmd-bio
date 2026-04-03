@@ -27,7 +27,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user) return null;
 
         if (!user.isVerified) return null;
-        if (user.isDisabled) return null;
+        if (user.status !== "approved") return null;
 
         const valid = await bcrypt.compare(
           credentials.password as string,
@@ -91,7 +91,7 @@ export async function authenticateRequest(
 
   const user = await User.findOne({ "apiKeys.key": apiKey }).lean();
   if (!user) return null;
-  if (!user.isVerified || user.isDisabled) return null;
+  if (!user.isVerified || user.status !== "approved") return null;
 
   return {
     id: user._id.toString(),

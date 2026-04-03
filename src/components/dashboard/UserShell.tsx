@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import Link from "next/link";
 import {
   AppBar,
-  Badge,
   Box,
   Drawer,
   IconButton,
@@ -23,38 +22,30 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import LinkIcon from "@mui/icons-material/Link";
-import PeopleIcon from "@mui/icons-material/People";
+import AddLinkIcon from "@mui/icons-material/AddLink";
 import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
 
 const DRAWER_WIDTH = 260;
 
 const navItems = [
-  { label: "Dashboard", href: "/admin", icon: <DashboardIcon /> },
-  { label: "Links", href: "/admin/links", icon: <LinkIcon /> },
-  { label: "Users", href: "/admin/users", icon: <PeopleIcon /> },
-  { label: "Settings", href: "/admin/settings", icon: <SettingsIcon /> },
+  { label: "Dashboard", href: "/dashboard", icon: <DashboardIcon /> },
+  { label: "My Links", href: "/dashboard/links", icon: <LinkIcon /> },
+  { label: "Create Link", href: "/dashboard/links/new", icon: <AddLinkIcon /> },
+  { label: "Settings", href: "/dashboard/settings", icon: <SettingsIcon /> },
 ];
 
-export default function AdminShell({ children }: { children: React.ReactNode }) {
+export default function UserShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
-
-  useEffect(() => {
-    fetch("/api/v1/admin/users?status=pending&limit=1")
-      .then((r) => r.json())
-      .then((j) => { if (j.success) setPendingCount(j.data.pagination.total); })
-      .catch(() => {});
-  }, []);
 
   const drawerContent = (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <Toolbar sx={{ px: 3 }}>
-        <Link href="/admin" style={{ textDecoration: "none" }}>
+        <Link href="/dashboard" style={{ textDecoration: "none" }}>
           <Typography variant="h6" sx={{ fontWeight: 700, color: "text.primary" }}>
             HMD<span style={{ color: theme.palette.primary.main }}>.bio</span>
           </Typography>
@@ -65,7 +56,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
-            (item.href !== "/admin" && pathname.startsWith(item.href));
+            (item.href !== "/dashboard" && pathname.startsWith(item.href));
           return (
             <ListItemButton
               key={item.href}
@@ -86,18 +77,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               }}
             >
               <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-              <ListItemText
-                primary={
-                  item.label === "Users" && pendingCount > 0 ? (
-                    <Badge badgeContent={pendingCount} color="warning" max={99} sx={{ "& .MuiBadge-badge": { right: -16, top: 2 } }}>
-                      {item.label}
-                    </Badge>
-                  ) : (
-                    item.label
-                  )
-                }
-                primaryTypographyProps={{ fontWeight: 500, fontSize: 14 }}
-              />
+              <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: 500, fontSize: 14 }} />
             </ListItemButton>
           );
         })}
@@ -119,7 +99,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      {/* AppBar (mobile only) */}
       <AppBar
         position="fixed"
         elevation={0}
@@ -140,7 +119,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </Toolbar>
       </AppBar>
 
-      {/* Sidebar Drawer */}
       {isDesktop ? (
         <Drawer
           variant="permanent"
@@ -171,7 +149,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </Drawer>
       )}
 
-      {/* Main content */}
       <Box
         component="main"
         sx={{

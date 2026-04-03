@@ -3,11 +3,11 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
 import MuiProvider from "@/components/providers/MuiProvider";
-import AdminShell from "@/components/admin/AdminShell";
+import UserShell from "@/components/dashboard/UserShell";
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
-export default async function AdminLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -18,14 +18,15 @@ export default async function AdminLayout({
     redirect("/admin/login");
   }
 
-  if (session.user.role !== "admin") {
-    redirect("/dashboard");
+  // Admins go to admin dashboard
+  if (session.user.role === "admin") {
+    redirect("/admin");
   }
 
   return (
     <SessionProvider session={session}>
       <MuiProvider>
-        <AdminShell>{children}</AdminShell>
+        <UserShell>{children}</UserShell>
       </MuiProvider>
     </SessionProvider>
   );

@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const base = (process.env.AUTH_URL || "https://hmd.bio")
       .trim()
       .replace(/\/+$/, "");
-    return Response.redirect(`${base}/admin/login?verified=1`, 302);
+    return Response.redirect(`${base}/admin/login?verified=1&pending=1`, 302);
   } catch (err) {
     console.error("Verify error:", err);
     return apiError("Internal server error", 500);

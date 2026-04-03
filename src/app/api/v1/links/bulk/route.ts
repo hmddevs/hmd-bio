@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
         ip: "",
         clicks: 0,
         statusCode: 301,
+        createdVia: "bulk",
+        owner: user.id,
       });
 
       results.push({ keyword, url: item.url, status: "created" });
