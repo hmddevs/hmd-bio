@@ -4,6 +4,7 @@ import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest, requireAdmin } from "@/lib/auth";
+import { getCachedStats, setCachedStats } from "@/lib/cache";
 
 function periodToDate(period: string): Date | null {
   const now = new Date();
@@ -33,6 +34,14 @@ export async function GET(
   try {
     const { keyword } = await params;
     const period = request.nextUrl.searchParams.get("period") || "all";
+
+    // Try cache first (5 min TTL)
+    const cacheKey = `kw:${keyword}:${period}`;
+    const cached = await getCachedStats(cacheKey);
+    if (cached) {
+      return apiSuccess(cached);
+    }
+
     await connectDB();
 
     const link = await Link.findOne({ keyword }).lean();
@@ -104,7 +113,7 @@ export async function GET(
         ? Math.round((directCount / totalInPeriod) * 100)
         : 0;
 
-    return apiSuccess({
+    const data = {
       keyword: link.keyword,
       url: link.url,
       title: link.title,
@@ -116,20 +125,24 @@ export async function GET(
       directCount,
       referredCount,
       directPercent,
-      uniqueReferrers: referrers.filter((r) => r._id).length,
-      uniqueCountries: countries.filter((c) => c._id).length,
-      referrers: referrers.map((r) => ({
+      uniqueReferrers: referrers.filter((r: { _id: string | null }) => r._id).length,
+      uniqueCountries: countries.filter((c: { _id: string | null }) => c._id).length,
+      referrers: referrers.map((r: { _id: string | null; count: number }) => ({
         referrer: r._id || "Direct",
         count: r.count,
       })),
-      countries: countries.map((c) => ({
+      countries: countries.map((c: { _id: string | null; count: number }) => ({
         code: c._id || "Unknown",
         count: c.count,
       })),
-      timeline: timeline.map((t) => ({ date: t._id, count: t.count })),
-      browsers: browsers.map((b) => ({ name: b._id || "Unknown", count: b.count })),
-      operatingSystems: operatingSystems.map((o) => ({ name: o._id || "Unknown", count: o.count })),
-    });
+      timeline: timeline.map((t: { _id: string; count: number }) => ({ date: t._id, count: t.count })),
+      browsers: browsers.map((b: { _id: string | null; count: number }) => ({ name: b._id || "Unknown", count: b.count })),
+      operatingSystems: operatingSystems.map((o: { _id: string | null; count: number }) => ({ name: o._id || "Unknown", count: o.count })),
+    };
+
+    setCachedStats(cacheKey, data, 300).catch(() => {});
+
+    return apiSuccess(data);
   } catch (err) {
     console.error("Keyword stats error:", err);
     return apiError("Internal server error", 500);

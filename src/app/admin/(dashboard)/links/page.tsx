@@ -66,6 +66,11 @@ interface Pagination {
   totalPages: number;
 }
 
+interface UserOption {
+  _id: string;
+  username: string;
+}
+
 export default function LinksPage() {
   const router = useRouter();
   const [links, setLinks] = useState<LinkItem[]>([]);
@@ -83,6 +88,7 @@ export default function LinksPage() {
   const [maxClicks, setMaxClicks] = useState("");
   const [deleteKeyword, setDeleteKeyword] = useState<string | null>(null);
   const [ownerFilter, setOwnerFilter] = useState("all");
+  const [users, setUsers] = useState<UserOption[]>([]);
 
   // Create Link dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -128,6 +134,15 @@ export default function LinksPage() {
   useEffect(() => {
     fetchLinks(1);
   }, [fetchLinks]);
+
+  useEffect(() => {
+    fetch("/api/v1/admin/users?limit=100")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setUsers(d.data.users);
+      })
+      .catch(() => {});
+  }, []);
 
   async function handleDelete() {
     if (!deleteKeyword) return;
@@ -299,7 +314,12 @@ export default function LinksPage() {
                   onChange={(e) => setOwnerFilter(e.target.value)}
                 >
                   <MenuItem value="all">All</MenuItem>
-                  <MenuItem value="public">Public</MenuItem>
+                  <MenuItem value="public">Public (no owner)</MenuItem>
+                  {users.map((u) => (
+                    <MenuItem key={u._id} value={u._id}>
+                      {u.username}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import {
   Box,
   Card,
@@ -22,8 +22,8 @@ import PublicIcon from "@mui/icons-material/Public";
 import SpeedIcon from "@mui/icons-material/Speed";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AvTimerIcon from "@mui/icons-material/AvTimer";
-import { LineChart } from "@mui/x-charts/LineChart";
-import { BarChart as MuiBarChart } from "@mui/x-charts/BarChart";
+const LineChart = lazy(() => import("@mui/x-charts/LineChart").then(m => ({ default: m.LineChart })));
+const MuiBarChart = lazy(() => import("@mui/x-charts/BarChart").then(m => ({ default: m.BarChart })));
 import { useTheme } from "@mui/material/styles";
 import { useRouter } from "next/navigation";
 import { getCountryName, getCountryFlag } from "@/lib/countries";
@@ -169,6 +169,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                   return <Typography variant="body2" color="text.secondary">No data yet</Typography>;
                 }
                 return (
+                  <Suspense fallback={<LinearProgress />}>
                   <LineChart
                     height={120}
                     series={[
@@ -191,6 +192,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                     margin={{ top: 10, bottom: 24, left: 10, right: 10 }}
                     hideLegend
                   />
+                  </Suspense>
                 );
               })()}
             </CardContent>
@@ -362,6 +364,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                 <Typography variant="subtitle1" fontWeight={600} mb={2}>
                   24-Hour Activity
                 </Typography>
+                <Suspense fallback={<LinearProgress />}>
                 <MuiBarChart
                   height={220}
                   dataset={chartData}
@@ -394,6 +397,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                   borderRadius={3}
                   hideLegend
                 />
+                </Suspense>
               </CardContent>
             </Card>
           </Grid>

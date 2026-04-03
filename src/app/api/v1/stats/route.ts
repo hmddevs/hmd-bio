@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
+import { getCachedStats, setCachedStats } from "@/lib/cache";
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +14,13 @@ export async function GET(request: NextRequest) {
       return apiError("Rate limit exceeded. Try again later.", 429);
     }
 
+    // Try cache first (5 min TTL)
+    const cacheKey = "global";
+    const cached = await getCachedStats<{ totalLinks: number; totalClicks: number }>(cacheKey);
+    if (cached) {
+      return apiSuccess(cached);
+    }
+
     await connectDB();
 
     const [totalLinks, totalClicksAgg] = await Promise.all([
@@ -21,8 +29,11 @@ export async function GET(request: NextRequest) {
     ]);
 
     const totalClicks = totalClicksAgg[0]?.total ?? 0;
+    const data = { totalLinks, totalClicks };
 
-    return apiSuccess({ totalLinks, totalClicks });
+    setCachedStats(cacheKey, data, 300).catch(() => {});
+
+    return apiSuccess(data);
   } catch (err) {
     console.error("Stats error:", err);
     return apiError("Internal server error", 500);

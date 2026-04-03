@@ -3,6 +3,9 @@ import { Link } from "@/models/Link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
+// ISR: revalidate preview pages every hour
+export const revalidate = 3600;
+
 interface Props {
   params: Promise<{ keyword: string }>;
 }

@@ -5,6 +5,7 @@ import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { NextRequest } from "next/server";
 import { apiError } from "@/lib/api-response";
+import { verifyTurnstile } from "@/lib/utils";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -109,5 +110,31 @@ export function requireAdmin(
   if (user.role !== "admin") {
     return apiError("Forbidden — admin access required", 403);
   }
+  return null;
+}
+
+/**
+ * Require a valid Turnstile token on the request.
+ * Checks the provided token string, or falls back to X-Turnstile-Token header.
+ * Returns a 403 Response if verification fails, or null if OK.
+ * Skipped when TURNSTILE_SECRET_KEY is not configured (dev mode).
+ */
+export async function requireTurnstile(
+  turnstileToken: string | null | undefined,
+  request?: NextRequest
+): Promise<Response | null> {
+  const secretKey = process.env.TURNSTILE_SECRET_KEY;
+  if (!secretKey) return null; // dev mode — skip
+
+  const token = turnstileToken || request?.headers.get("x-turnstile-token");
+  if (!token) {
+    return apiError("Turnstile token required", 403);
+  }
+
+  const valid = await verifyTurnstile(token, secretKey);
+  if (!valid) {
+    return apiError("Turnstile verification failed", 403);
+  }
+
   return null;
 }

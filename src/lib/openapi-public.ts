@@ -1,10 +1,21 @@
 export const openApiPublicSpec = {
   openapi: "3.0.3",
   info: {
-    title: "HMD.bio Public API",
+    title: "HMD.bio API",
     version: "1.0.0",
-    description:
-      "Public URL shortening API by HMD Developments. Shorten links, expand them, and view global stats. For admin endpoints (link management, analytics, API keys), authenticate via the admin dashboard.",
+    description: `URL shortening API by HMD Developments.
+
+**Three API tiers:**
+
+| Tier | Authentication | Rate Limit | Description |
+|------|---------------|------------|-------------|
+| **Public** | Turnstile token | 30 req/min | Shorten, expand, stats — no account needed |
+| **User** | API key + Turnstile token | 100 req/min | Manage your own links, clicks & analytics |
+| **Admin** | API key (admin role) | 100 req/min | Full platform management (separate docs) |
+
+**Turnstile tokens** are obtained client-side via the [Cloudflare Turnstile widget](https://developers.cloudflare.com/turnstile/). Pass them as \`turnstileToken\` in the request body or as the \`X-Turnstile-Token\` header for GET requests.
+
+**API keys** start with \`hmd_\` and are managed from the dashboard or via the API keys endpoints below.`,
     contact: {
       name: "HMD Developments",
       url: "https://hmddevs.org",
@@ -14,24 +25,37 @@ export const openApiPublicSpec = {
   tags: [
     {
       name: "Public",
-      description: "No authentication required (rate-limited)",
+      description:
+        "No account required. Only a Cloudflare Turnstile token is needed in production (30 req/min).",
     },
     {
       name: "Auth",
       description: "Registration and email verification",
     },
     {
-      name: "User",
-      description: "Authenticated user endpoints (Bearer API key required)",
+      name: "User — Links",
+      description:
+        "Manage your own links. Requires Bearer API key **and** Turnstile token (100 req/min).",
+    },
+    {
+      name: "User — Analytics",
+      description:
+        "View your own click logs and statistics. Requires Bearer API key **and** Turnstile token.",
+    },
+    {
+      name: "User — API Keys",
+      description:
+        "Create, list, and delete your API keys. Requires Bearer API key **and** Turnstile token.",
     },
   ],
   paths: {
+    // ── Public ──────────────────────────────────────────────
     "/api/v1/shorten": {
       post: {
         tags: ["Public"],
         summary: "Shorten a URL",
         description:
-          "Create a short link. Either a valid Cloudflare Turnstile token **or** a Bearer API key is required when used programmatically.",
+          "Create a short link. A Cloudflare Turnstile token is required. If you also provide a Bearer API key, the link is assigned to your account and you get higher rate limits (100 req/min).",
         requestBody: {
           required: true,
           content: {
@@ -55,7 +79,7 @@ export const openApiPublicSpec = {
                   turnstileToken: {
                     type: "string",
                     description:
-                      "Cloudflare Turnstile token (required unless using Bearer API key)",
+                      "Cloudflare Turnstile token (required in production)",
                   },
                 },
               },
@@ -87,12 +111,9 @@ export const openApiPublicSpec = {
             },
           },
           "400": { description: "Validation error" },
-          "401": {
-            description:
-              "Unauthorized — missing Turnstile token and API key",
-          },
+          "403": { description: "Turnstile verification failed" },
           "409": { description: "Keyword already taken" },
-          "429": { description: "Rate limited (30 req/min)" },
+          "429": { description: "Rate limited" },
         },
       },
     },
@@ -165,6 +186,8 @@ export const openApiPublicSpec = {
         },
       },
     },
+
+    // ── Auth ────────────────────────────────────────────────
     "/api/v1/auth/register": {
       post: {
         tags: ["Auth"],
@@ -212,36 +235,380 @@ export const openApiPublicSpec = {
         },
       },
     },
+
+    // ── User — Links ───────────────────────────────────────
     "/api/v1/user/links": {
       get: {
-        tags: ["User"],
+        tags: ["User — Links"],
         summary: "List your links",
-        description: "Returns links created by the authenticated user.",
+        description:
+          "Returns paginated links owned by the authenticated user. Supports search, sort, and ordering.",
         security: [{ BearerAuth: [] }],
         parameters: [
-          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
-          { name: "limit", in: "query", schema: { type: "integer", default: 15, maximum: 100 } },
+          {
+            name: "X-Turnstile-Token",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Cloudflare Turnstile token",
+          },
+          {
+            name: "page",
+            in: "query",
+            schema: { type: "integer", default: 1 },
+          },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", default: 15, maximum: 100 },
+          },
+          {
+            name: "search",
+            in: "query",
+            schema: { type: "string" },
+            description: "Search keywords, URLs, or titles",
+          },
+          {
+            name: "sort",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["keyword", "url", "clicks", "createdAt"],
+              default: "createdAt",
+            },
+          },
+          {
+            name: "order",
+            in: "query",
+            schema: { type: "string", enum: ["asc", "desc"], default: "desc" },
+          },
         ],
         responses: {
-          "200": { description: "Paginated list of user's links" },
-          "401": { description: "Unauthorized" },
+          "200": {
+            description: "Paginated list of links",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    data: {
+                      type: "object",
+                      properties: {
+                        links: {
+                          type: "array",
+                          items: { $ref: "#/components/schemas/Link" },
+                        },
+                        pagination: {
+                          $ref: "#/components/schemas/Pagination",
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "Unauthorized — missing or invalid API key" },
+          "403": { description: "Turnstile verification failed" },
         },
       },
     },
+    "/api/v1/user/links/{keyword}": {
+      delete: {
+        tags: ["User — Links"],
+        summary: "Delete one of your links",
+        description:
+          "Deletes a link you own and all associated click logs. Returns 403 if the link belongs to another user.",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "keyword",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+          {
+            name: "X-Turnstile-Token",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Cloudflare Turnstile token",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Link deleted",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    data: {
+                      type: "object",
+                      properties: {
+                        deleted: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden — not your link, or Turnstile failed" },
+          "404": { description: "Link not found" },
+        },
+      },
+    },
+
+    // ── User — Analytics ───────────────────────────────────
+    "/api/v1/user/stats": {
+      get: {
+        tags: ["User — Analytics"],
+        summary: "Get your link statistics",
+        description:
+          "Detailed analytics for all your links: totals, 24h clicks, weekly trend, top links, and top countries.",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "X-Turnstile-Token",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Cloudflare Turnstile token",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "User statistics",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    data: {
+                      type: "object",
+                      properties: {
+                        totalLinks: { type: "integer" },
+                        totalClicks: { type: "integer" },
+                        avgClicks: { type: "number" },
+                        clicks24h: { type: "integer" },
+                        weeklyTrend: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              _id: {
+                                type: "string",
+                                description: "Date (YYYY-MM-DD)",
+                              },
+                              count: { type: "integer" },
+                            },
+                          },
+                        },
+                        topLinks: {
+                          type: "array",
+                          items: { $ref: "#/components/schemas/Link" },
+                        },
+                        topCountries: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              _id: {
+                                type: "string",
+                                description: "ISO country code",
+                              },
+                              count: { type: "integer" },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Turnstile verification failed" },
+        },
+      },
+    },
+    "/api/v1/user/clicks": {
+      get: {
+        tags: ["User — Analytics"],
+        summary: "List click logs for your links",
+        description:
+          "Paginated click log across all your links, with optional filters by keyword, country, browser, and OS.",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "X-Turnstile-Token",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Cloudflare Turnstile token",
+          },
+          {
+            name: "page",
+            in: "query",
+            schema: { type: "integer", default: 1 },
+          },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", default: 50, maximum: 100 },
+          },
+          {
+            name: "keyword",
+            in: "query",
+            schema: { type: "string" },
+            description: "Filter by a specific link keyword (must be yours)",
+          },
+          {
+            name: "country",
+            in: "query",
+            schema: { type: "string" },
+            description: "Filter by ISO country code (e.g. US, TR)",
+          },
+          {
+            name: "browser",
+            in: "query",
+            schema: { type: "string" },
+            description: "Filter by browser name (case-insensitive)",
+          },
+          {
+            name: "os",
+            in: "query",
+            schema: { type: "string" },
+            description: "Filter by OS name (case-insensitive)",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Paginated click log",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    data: {
+                      type: "object",
+                      properties: {
+                        clicks: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              id: { type: "string" },
+                              keyword: { type: "string" },
+                              linkTitle: { type: "string" },
+                              linkUrl: { type: "string" },
+                              createdAt: {
+                                type: "string",
+                                format: "date-time",
+                              },
+                              countryCode: { type: "string" },
+                              browser: { type: "string" },
+                              os: { type: "string" },
+                              referrer: { type: "string" },
+                            },
+                          },
+                        },
+                        total: { type: "integer" },
+                        page: { type: "integer" },
+                        pages: { type: "integer" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden — keyword not yours, or Turnstile failed" },
+          "429": { description: "Rate limited (60 req/min)" },
+        },
+      },
+    },
+
+    // ── User — API Keys ────────────────────────────────────
     "/api/v1/user/api-keys": {
       get: {
-        tags: ["User"],
+        tags: ["User — API Keys"],
         summary: "List your API keys",
+        description: "Returns your API keys with the key partially masked.",
         security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "X-Turnstile-Token",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Cloudflare Turnstile token",
+          },
+        ],
         responses: {
-          "200": { description: "List of masked API keys" },
+          "200": {
+            description: "List of API keys",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    data: {
+                      type: "object",
+                      properties: {
+                        keys: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              _id: { type: "string" },
+                              label: { type: "string" },
+                              key: {
+                                type: "string",
+                                description: "Partially masked key",
+                              },
+                              createdAt: {
+                                type: "string",
+                                format: "date-time",
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
           "401": { description: "Unauthorized" },
+          "403": { description: "Turnstile verification failed" },
         },
       },
       post: {
-        tags: ["User"],
+        tags: ["User — API Keys"],
         summary: "Create an API key",
+        description:
+          "Generate a new `hmd_*` API key. The full key is returned **only once**. Maximum 5 keys per account.",
         security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "X-Turnstile-Token",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Cloudflare Turnstile token",
+          },
+        ],
         requestBody: {
           required: true,
           content: {
@@ -249,22 +616,58 @@ export const openApiPublicSpec = {
               schema: {
                 type: "object",
                 properties: {
-                  label: { type: "string", maxLength: 100, default: "Default" },
+                  label: {
+                    type: "string",
+                    maxLength: 100,
+                    default: "Default",
+                  },
                 },
               },
             },
           },
         },
         responses: {
-          "201": { description: "API key created (shown only once)" },
-          "400": { description: "Max 5 keys reached" },
+          "201": {
+            description: "API key created",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    data: {
+                      type: "object",
+                      properties: {
+                        key: {
+                          type: "string",
+                          description: "Full API key (shown only once)",
+                        },
+                        label: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Maximum 5 API keys reached" },
           "401": { description: "Unauthorized" },
+          "403": { description: "Turnstile verification failed" },
         },
       },
       delete: {
-        tags: ["User"],
+        tags: ["User — API Keys"],
         summary: "Delete an API key",
         security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "X-Turnstile-Token",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Cloudflare Turnstile token",
+          },
+        ],
         requestBody: {
           required: true,
           content: {
@@ -273,7 +676,7 @@ export const openApiPublicSpec = {
                 type: "object",
                 required: ["id"],
                 properties: {
-                  id: { type: "string", description: "API key _id" },
+                  id: { type: "string", description: "API key _id to delete" },
                 },
               },
             },
@@ -282,6 +685,7 @@ export const openApiPublicSpec = {
         responses: {
           "200": { description: "API key deleted" },
           "401": { description: "Unauthorized" },
+          "403": { description: "Turnstile verification failed" },
         },
       },
     },
@@ -291,7 +695,37 @@ export const openApiPublicSpec = {
       BearerAuth: {
         type: "http",
         scheme: "bearer",
-        description: "API key starting with hmd_",
+        description:
+          "API key starting with `hmd_`. Obtain one from the dashboard or via POST /api/v1/user/api-keys.",
+      },
+    },
+    schemas: {
+      Link: {
+        type: "object",
+        properties: {
+          _id: { type: "string" },
+          keyword: { type: "string" },
+          url: { type: "string" },
+          title: { type: "string" },
+          clicks: { type: "integer" },
+          statusCode: { type: "integer", enum: [301, 302] },
+          isPasswordProtected: { type: "boolean" },
+          createdVia: {
+            type: "string",
+            enum: ["form", "api", "bulk", "dashboard"],
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      Pagination: {
+        type: "object",
+        properties: {
+          page: { type: "integer" },
+          limit: { type: "integer" },
+          total: { type: "integer" },
+          totalPages: { type: "integer" },
+        },
       },
     },
   },

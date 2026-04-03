@@ -6,6 +6,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { hashIP } from "@/lib/ip";
 import { encrypt } from "@/lib/encryption";
 import { UAParser } from "ua-parser-js";
+import { invalidateCachedLink } from "@/lib/cache";
 
 /**
  * Webhook endpoint for real-time YOURLS → MongoDB sync.
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
         { upsert: true }
       );
 
+      invalidateCachedLink(keyword).catch(() => {});
       return apiSuccess({ synced: "link", keyword });
     }
 
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
       if (!keyword) return apiError("Missing keyword", 400);
 
       await Link.updateOne({ keyword }, { $set: { clicks } });
+      invalidateCachedLink(keyword).catch(() => {});
       return apiSuccess({ synced: "update_clicks", keyword });
     }
 
