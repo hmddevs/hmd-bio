@@ -147,8 +147,8 @@ export default function HomeForm() {
           />
         </div>
 
-        <div className="flex gap-3">
-          <div className="flex items-center flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex items-center flex-1 min-w-0 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
             <span className="text-gray-500 dark:text-gray-500 text-sm whitespace-nowrap">
               hmd.bio/
             </span>
@@ -161,13 +161,13 @@ export default function HomeForm() {
               placeholder="custom (optional)"
               pattern="^[a-zA-Z0-9_-]*$"
               maxLength={100}
-              className="flex-1 bg-transparent text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none"
+              className="flex-1 min-w-0 bg-transparent text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl shadow-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl shadow-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           >
             {loading ? "Shortening…" : "Shorten"}
           </button>
