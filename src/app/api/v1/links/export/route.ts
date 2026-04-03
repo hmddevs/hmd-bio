@@ -1,11 +1,12 @@
+import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
-import { apiSuccess, apiError } from "@/lib/api-response";
-import { auth } from "@/lib/auth";
+import { apiError } from "@/lib/api-response";
+import { authenticateRequest } from "@/lib/auth";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
+export async function GET(request: NextRequest) {
+  const user = await authenticateRequest(request);
+  if (!user) {
     return apiError("Unauthorized", 401);
   }
 

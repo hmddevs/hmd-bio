@@ -134,7 +134,7 @@ export const openApiSpec = {
       get: {
         tags: ["Links"],
         summary: "List all links",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", default: 15, maximum: 100 } },
@@ -175,7 +175,7 @@ export const openApiSpec = {
       get: {
         tags: ["Links"],
         summary: "Get a link",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         parameters: [
           { name: "keyword", in: "path", required: true, schema: { type: "string" } },
         ],
@@ -187,7 +187,7 @@ export const openApiSpec = {
       put: {
         tags: ["Links"],
         summary: "Update a link",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         parameters: [
           { name: "keyword", in: "path", required: true, schema: { type: "string" } },
         ],
@@ -221,7 +221,7 @@ export const openApiSpec = {
       delete: {
         tags: ["Links"],
         summary: "Delete a link",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         parameters: [
           { name: "keyword", in: "path", required: true, schema: { type: "string" } },
         ],
@@ -235,7 +235,7 @@ export const openApiSpec = {
       get: {
         tags: ["Stats"],
         summary: "Get click log for a link",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         parameters: [
           { name: "keyword", in: "path", required: true, schema: { type: "string" } },
           { name: "page", in: "query", schema: { type: "integer", default: 1 } },
@@ -250,7 +250,7 @@ export const openApiSpec = {
       post: {
         tags: ["Links"],
         summary: "Generate QR code for a link",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         parameters: [
           { name: "keyword", in: "path", required: true, schema: { type: "string" } },
         ],
@@ -283,7 +283,7 @@ export const openApiSpec = {
       post: {
         tags: ["Links"],
         summary: "Bulk create links",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         requestBody: {
           required: true,
           content: {
@@ -313,7 +313,7 @@ export const openApiSpec = {
       get: {
         tags: ["Links"],
         summary: "Export links as CSV",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         responses: {
           "200": {
             description: "CSV file",
@@ -326,7 +326,7 @@ export const openApiSpec = {
       get: {
         tags: ["Stats"],
         summary: "Get detailed stats for a link",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         parameters: [
           { name: "keyword", in: "path", required: true, schema: { type: "string" } },
           { name: "period", in: "query", schema: { type: "string", enum: ["24h", "7d", "30d", "all"], default: "all" } },
@@ -340,7 +340,7 @@ export const openApiSpec = {
       get: {
         tags: ["Auth"],
         summary: "List API keys",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         responses: {
           "200": { description: "API key list" },
         },
@@ -348,7 +348,7 @@ export const openApiSpec = {
       post: {
         tags: ["Auth"],
         summary: "Create an API key",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         requestBody: {
           content: {
             "application/json": {
@@ -368,7 +368,7 @@ export const openApiSpec = {
       delete: {
         tags: ["Auth"],
         summary: "Delete an API key",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         requestBody: {
           content: {
             "application/json": {
@@ -391,7 +391,7 @@ export const openApiSpec = {
       put: {
         tags: ["Auth"],
         summary: "Change password",
-        security: [{ session: [] }],
+        security: [{ bearerAuth: [] }, { session: [] }],
         requestBody: {
           required: true,
           content: {
@@ -444,6 +444,11 @@ export const openApiSpec = {
       },
     },
     securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        description: "API key (starts with hmd_). Create one at /admin → Settings → API Keys.",
+      },
       session: {
         type: "apiKey",
         in: "cookie",
