@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, FormEvent, Suspense } from "react";
-import { signIn } from "next-auth/react";
+import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import NextLink from "next/link";
 import {
   Box,
   Card,
@@ -11,34 +11,38 @@ import {
   Button,
   Typography,
   Alert,
+  Link as MuiLink,
 } from "@mui/material";
 import MuiProvider from "@/components/providers/MuiProvider";
 
-function AdminLoginForm() {
+function SignupForm() {
   const router = useRouter();
+  const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setSuccess("");
     setLoading(true);
 
     try {
-      const result = await signIn("credentials", {
-        username,
-        password,
-        redirect: false,
+      const res = await fetch("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, username, password }),
       });
+      const data = await res.json();
 
-      if (result?.error) {
-        setError("Invalid credentials, account not yet verified, or pending approval");
+      if (!res.ok) {
+        setError(data.error || "Registration failed");
       } else {
-        // Role-based redirect handled by middleware/layout
-        router.push("/admin");
-        router.refresh();
+        setSuccess(data.data?.message || "Account created! Check your email.");
+        setTimeout(() => router.push("/login"), 3000);
       }
     } catch {
       setError("Network error.");
@@ -64,20 +68,34 @@ function AdminLoginForm() {
             HMD<Box component="span" sx={{ color: "primary.main" }}>.bio</Box>
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={0.5}>
-            Admin access only
+            Create your account
           </Typography>
         </Box>
 
         <Card>
           <CardContent sx={{ p: 3 }}>
-            <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Box
+              component="form"
+              onSubmit={handleSubmit}
+              sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+            >
               <TextField
-                label="Username or Email"
+                label="Email"
+                type="email"
+                required
+                fullWidth
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
+              <TextField
+                label="Username"
                 required
                 fullWidth
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
+                helperText="3–30 characters. Letters, numbers, hyphens, underscores."
               />
               <TextField
                 label="Password"
@@ -86,19 +104,29 @@ function AdminLoginForm() {
                 fullWidth
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete="new-password"
+                helperText="At least 8 characters."
               />
               {error && <Alert severity="error">{error}</Alert>}
+              {success && <Alert severity="success">{success}</Alert>}
               <Button
                 type="submit"
                 variant="contained"
                 fullWidth
                 size="large"
-                disabled={loading}
+                disabled={loading || !!success}
               >
-                {loading ? "Signing in…" : "Sign In"}
+                {loading ? "Creating account…" : "Create Account"}
               </Button>
-
+              <Typography variant="body2" color="text.secondary" textAlign="center">
+                Already have an account?{" "}
+                <MuiLink component={NextLink} href="/login">
+                  Sign in
+                </MuiLink>
+              </Typography>
+              <Typography variant="caption" color="text.secondary" textAlign="center">
+                After email verification, an admin will review and approve your account.
+              </Typography>
             </Box>
           </CardContent>
         </Card>
@@ -107,12 +135,10 @@ function AdminLoginForm() {
   );
 }
 
-export default function AdminLoginPage() {
+export default function SignupPage() {
   return (
     <MuiProvider>
-      <Suspense>
-        <AdminLoginForm />
-      </Suspense>
+      <SignupForm />
     </MuiProvider>
   );
 }
