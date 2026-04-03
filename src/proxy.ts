@@ -38,6 +38,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Preview pages don't need resolution — rewrite directly (no click logged)
+  if (isPreview) {
+    const previewUrl = new URL(`/preview/${keyword}`, request.url);
+    return NextResponse.rewrite(previewUrl);
+  }
+
   // Resolve via internal API (keeps MongoDB connection in API route, not Edge)
   const resolveUrl = new URL("/api/internal/resolve", request.url);
   resolveUrl.searchParams.set("keyword", keyword);
@@ -59,11 +65,6 @@ export async function proxy(request: NextRequest) {
     }
 
     const data = await res.json();
-
-    if (isPreview) {
-      const previewUrl = new URL(`/preview/${keyword}`, request.url);
-      return NextResponse.rewrite(previewUrl);
-    }
 
     if (data.isPasswordProtected) {
       const passwordUrl = new URL(`/password/${keyword}`, request.url);

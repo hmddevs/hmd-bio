@@ -67,7 +67,7 @@ export default async function AdminDashboard() {
 
   const totalClicks = totalClicksAgg[0]?.total ?? 0;
   const avgClicks = Math.round((avgClicksAgg[0]?.avg ?? 0) * 10) / 10;
-  const baseUrl = process.env.AUTH_URL || "https://hmd.bio";
+  const baseUrl = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
 
   return (
     <DashboardClient

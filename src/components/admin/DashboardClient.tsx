@@ -19,17 +19,8 @@ import PublicIcon from "@mui/icons-material/Public";
 import SpeedIcon from "@mui/icons-material/Speed";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AvTimerIcon from "@mui/icons-material/AvTimer";
-import {
-  BarChart,
-  Bar,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from "recharts";
+import { LineChart } from "@mui/x-charts/LineChart";
+import { BarChart as MuiBarChart } from "@mui/x-charts/BarChart";
 import { useTheme } from "@mui/material/styles";
 import { useRouter } from "next/navigation";
 import { getCountryName, getCountryFlag } from "@/lib/countries";
@@ -129,33 +120,29 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                 7-Day Click Trend
               </Typography>
               {weeklyTrend.length > 0 ? (
-                <ResponsiveContainer width="100%" height={120}>
-                  <AreaChart data={weeklyTrend}>
-                    <defs>
-                      <linearGradient id="sparkGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={theme.palette.primary.main} stopOpacity={0.3} />
-                        <stop offset="95%" stopColor={theme.palette.primary.main} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey="count"
-                      stroke={theme.palette.primary.main}
-                      strokeWidth={2}
-                      fill="url(#sparkGradient)"
-                      dot={false}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: theme.palette.background.paper,
-                        border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                      labelFormatter={(v) => String(v).slice(5)}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <LineChart
+                  height={120}
+                  series={[
+                    {
+                      data: weeklyTrend.map((d) => d.count),
+                      area: true,
+                      curve: "monotoneX",
+                      showMark: false,
+                      color: theme.palette.primary.main,
+                    },
+                  ]}
+                  xAxis={[
+                    {
+                      data: weeklyTrend.map((d) => d.date),
+                      scaleType: "point",
+                      tickLabelStyle: { display: "none" },
+                    },
+                  ]}
+                  yAxis={[{ tickLabelStyle: { display: "none" } }]}
+                  margin={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  hideLegend
+                  grid={{ horizontal: true }}
+                />
               ) : (
                 <Typography variant="body2" color="text.secondary">No data yet</Typography>
               )}
@@ -288,21 +275,38 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                 <Typography variant="subtitle1" fontWeight={600} mb={2}>
                   24-Hour Activity
                 </Typography>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-                    <XAxis dataKey="hour" tick={{ fontSize: 12 }} stroke={theme.palette.text.secondary} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke={theme.palette.text.secondary} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: theme.palette.background.paper,
-                        border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: 8,
-                      }}
-                    />
-                    <Bar dataKey="clicks" fill={theme.palette.primary.main} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <MuiBarChart
+                  height={220}
+                  dataset={chartData}
+                  series={[
+                    {
+                      dataKey: "clicks",
+                      label: "Clicks",
+                      color: theme.palette.primary.main,
+                    },
+                  ]}
+                  xAxis={[
+                    {
+                      dataKey: "hour",
+                      scaleType: "band",
+                      tickLabelStyle: {
+                        fontSize: 12,
+                        fill: theme.palette.text.secondary,
+                      },
+                    },
+                  ]}
+                  yAxis={[
+                    {
+                      tickLabelStyle: {
+                        fontSize: 12,
+                        fill: theme.palette.text.secondary,
+                      },
+                    },
+                  ]}
+                  grid={{ horizontal: true }}
+                  borderRadius={4}
+                  hideLegend
+                />
               </CardContent>
             </Card>
           </Grid>
