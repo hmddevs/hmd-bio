@@ -1,9 +1,9 @@
-export const openApiSpec = {
+export const openApiPrivateSpec = {
   openapi: "3.0.3",
   info: {
-    title: "HMD.bio API",
+    title: "HMD.bio Admin API",
     version: "1.0.0",
-    description: "URL shortening API by HMD Developments",
+    description: "Admin & management API for HMD.bio. Requires authentication via session cookie or Bearer API key (hmd_*).",
     contact: {
       name: "HMD Developments",
       url: "https://hmddevs.org",
@@ -11,125 +11,11 @@ export const openApiSpec = {
   },
   servers: [{ url: "https://hmd.bio", description: "Production" }],
   tags: [
-    { name: "Public", description: "No authentication required" },
     { name: "Links", description: "Link management (auth required)" },
     { name: "Stats", description: "Analytics & statistics" },
-    { name: "Auth", description: "API keys & password management" },
+    { name: "Auth", description: "API keys & password management (session only)" },
   ],
   paths: {
-    "/api/v1/shorten": {
-      post: {
-        tags: ["Public"],
-        summary: "Shorten a URL",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["url"],
-                properties: {
-                  url: { type: "string", format: "uri", description: "The URL to shorten" },
-                  keyword: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_-]+$", description: "Custom keyword (optional)" },
-                  title: { type: "string", maxLength: 500 },
-                  turnstileToken: { type: "string", description: "Cloudflare Turnstile token (optional)" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          "201": {
-            description: "Link created",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    success: { type: "boolean" },
-                    data: {
-                      type: "object",
-                      properties: {
-                        keyword: { type: "string" },
-                        url: { type: "string" },
-                        shortUrl: { type: "string" },
-                        title: { type: "string" },
-                        createdAt: { type: "string", format: "date-time" },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          "400": { description: "Validation error" },
-          "409": { description: "Keyword already taken" },
-          "429": { description: "Rate limited" },
-        },
-      },
-    },
-    "/api/v1/expand": {
-      get: {
-        tags: ["Public"],
-        summary: "Expand a short link",
-        parameters: [
-          { name: "keyword", in: "query", required: true, schema: { type: "string" } },
-        ],
-        responses: {
-          "200": {
-            description: "Expanded link info",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    success: { type: "boolean" },
-                    data: {
-                      type: "object",
-                      properties: {
-                        keyword: { type: "string" },
-                        url: { type: "string" },
-                        title: { type: "string" },
-                        createdAt: { type: "string", format: "date-time" },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          "404": { description: "Link not found" },
-        },
-      },
-    },
-    "/api/v1/stats": {
-      get: {
-        tags: ["Public"],
-        summary: "Get public stats",
-        responses: {
-          "200": {
-            description: "Global statistics",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    success: { type: "boolean" },
-                    data: {
-                      type: "object",
-                      properties: {
-                        totalLinks: { type: "integer" },
-                        totalClicks: { type: "integer" },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
     "/api/v1/links": {
       get: {
         tags: ["Links"],
@@ -340,7 +226,7 @@ export const openApiSpec = {
       get: {
         tags: ["Auth"],
         summary: "List API keys",
-        security: [{ bearerAuth: [] }, { session: [] }],
+        security: [{ session: [] }],
         responses: {
           "200": { description: "API key list" },
         },
@@ -348,7 +234,7 @@ export const openApiSpec = {
       post: {
         tags: ["Auth"],
         summary: "Create an API key",
-        security: [{ bearerAuth: [] }, { session: [] }],
+        security: [{ session: [] }],
         requestBody: {
           content: {
             "application/json": {
@@ -368,7 +254,7 @@ export const openApiSpec = {
       delete: {
         tags: ["Auth"],
         summary: "Delete an API key",
-        security: [{ bearerAuth: [] }, { session: [] }],
+        security: [{ session: [] }],
         requestBody: {
           content: {
             "application/json": {
@@ -391,7 +277,7 @@ export const openApiSpec = {
       put: {
         tags: ["Auth"],
         summary: "Change password",
-        security: [{ bearerAuth: [] }, { session: [] }],
+        security: [{ session: [] }],
         requestBody: {
           required: true,
           content: {

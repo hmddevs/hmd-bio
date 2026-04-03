@@ -10,9 +10,18 @@ import {
   fetchPageTitle,
   verifyTurnstile,
 } from "@/lib/utils";
+import { authenticateRequest } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 30 req/min per IP
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const rl = rateLimit(`shorten:${ip}`, { limit: 30, windowMs: 60_000 });
+    if (!rl.allowed) {
+      return apiError("Rate limit exceeded. Try again later.", 429);
+    }
+
     const body = await request.json();
     const parsed = shortenSchema.safeParse(body);
     if (!parsed.success) {
@@ -21,13 +30,28 @@ export async function POST(request: NextRequest) {
 
     const { url, keyword: customKeyword, title, turnstileToken } = parsed.data;
 
-    // Cloudflare Turnstile verification for public requests
+    // Auth gate: require either a valid Turnstile token OR a valid API key
     const secretKey = process.env.TURNSTILE_SECRET_KEY;
-    if (secretKey && turnstileToken) {
+    let authenticated = false;
+
+    // Check API key first
+    const user = await authenticateRequest(request);
+    if (user) {
+      authenticated = true;
+    }
+
+    // Check Turnstile token
+    if (!authenticated && secretKey && turnstileToken) {
       const valid = await verifyTurnstile(turnstileToken, secretKey);
       if (!valid) {
         return apiError("Turnstile verification failed", 403);
       }
+      authenticated = true;
+    }
+
+    // If TURNSTILE_SECRET_KEY is set (production) and neither auth method worked → reject
+    if (!authenticated && secretKey) {
+      return apiError("Authentication required. Provide a Turnstile token or Bearer API key.", 401);
     }
 
     // Protocol check
@@ -56,8 +80,6 @@ export async function POST(request: NextRequest) {
 
     // Auto-fetch title if not provided
     const linkTitle = title || (await fetchPageTitle(url));
-
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
 
     const link = await Link.create({
       keyword,

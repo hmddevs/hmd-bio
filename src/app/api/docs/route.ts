@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { openApiSpec } from "@/lib/openapi";
+import { openApiPublicSpec } from "@/lib/openapi-public";
 
 export function GET() {
-  return NextResponse.json(openApiSpec);
+  return NextResponse.json(openApiPublicSpec);
 }
