@@ -26,6 +26,12 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Resend verification state
+  const [showResend, setShowResend] = useState(false);
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendMsg, setResendMsg] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -49,6 +55,25 @@ function LoginForm() {
       setError("Network error.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResend(e: FormEvent) {
+    e.preventDefault();
+    setResendMsg("");
+    setResendLoading(true);
+    try {
+      const res = await fetch("/api/v1/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resendEmail }),
+      });
+      const data = await res.json();
+      setResendMsg(data.data?.message || data.error || "Done");
+    } catch {
+      setResendMsg("Network error.");
+    } finally {
+      setResendLoading(false);
     }
   }
 
@@ -121,6 +146,46 @@ function LoginForm() {
                   Create one
                 </MuiLink>
               </Typography>
+              <Typography variant="body2" color="text.secondary" textAlign="center">
+                <MuiLink
+                  component="button"
+                  type="button"
+                  variant="body2"
+                  onClick={() => setShowResend((v) => !v)}
+                  sx={{ cursor: "pointer" }}
+                >
+                  Didn&apos;t receive verification email?
+                </MuiLink>
+              </Typography>
+              {showResend && (
+                <Box
+                  component="form"
+                  onSubmit={handleResend}
+                  sx={{ display: "flex", flexDirection: "column", gap: 1.5, mt: 0.5 }}
+                >
+                  <TextField
+                    label="Email address"
+                    type="email"
+                    required
+                    fullWidth
+                    size="small"
+                    value={resendEmail}
+                    onChange={(e) => setResendEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                  <Button
+                    type="submit"
+                    variant="outlined"
+                    size="small"
+                    disabled={resendLoading}
+                  >
+                    {resendLoading ? "Sending…" : "Resend Verification Email"}
+                  </Button>
+                  {resendMsg && (
+                    <Alert severity="info" sx={{ fontSize: 13 }}>{resendMsg}</Alert>
+                  )}
+                </Box>
+              )}
             </Box>
           </CardContent>
         </Card>
