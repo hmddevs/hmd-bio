@@ -10,8 +10,9 @@ import {
   fetchPageTitle,
   verifyTurnstile,
 } from "@/lib/utils";
-import { authenticateRequest } from "@/lib/auth";
+import { authenticateRequest, requireTurnstile } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
+import { setCachedLink } from "@/lib/cache";
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,29 +26,30 @@ export async function POST(request: NextRequest) {
 
     const { url, keyword: customKeyword, title, turnstileToken } = parsed.data;
 
-    // Auth gate: require either a valid Turnstile token OR a valid API key
-    const secretKey = process.env.TURNSTILE_SECRET_KEY;
-    const authHeader = request.headers.get("authorization");
-    let authenticated = false;
-
-    // Check API key / session first
+    // Auth policy:
+    // - Public (no API key): Turnstile required
+    // - User (API key): API key + Turnstile required
+    // - Admin (API key, role=admin): API key only (no Turnstile)
     const user = await authenticateRequest(request);
+
     if (user) {
-      authenticated = true;
-    }
-
-    // Check Turnstile token
-    if (!authenticated && secretKey && turnstileToken) {
-      const valid = await verifyTurnstile(turnstileToken, secretKey);
-      if (!valid) {
-        return apiError("Turnstile verification failed", 403);
+      // Authenticated user — admins skip Turnstile, regular users need it
+      if (user.role !== "admin") {
+        const tsBlock = await requireTurnstile(turnstileToken);
+        if (tsBlock) return tsBlock;
       }
-      authenticated = true;
-    }
-
-    // If TURNSTILE_SECRET_KEY is set (production) and neither auth method worked → reject
-    if (!authenticated && secretKey) {
-      return apiError("Authentication required. Provide a Turnstile token or Bearer API key.", 401);
+    } else {
+      // Public / anonymous — Turnstile required
+      const secretKey = process.env.TURNSTILE_SECRET_KEY;
+      if (secretKey) {
+        if (!turnstileToken) {
+          return apiError("Turnstile token required", 403);
+        }
+        const valid = await verifyTurnstile(turnstileToken, secretKey);
+        if (!valid) {
+          return apiError("Turnstile verification failed", 403);
+        }
+      }
     }
 
     // Rate limit: 100/min for authenticated users, 30/min for anonymous
@@ -86,6 +88,7 @@ export async function POST(request: NextRequest) {
     const linkTitle = title || (await fetchPageTitle(url));
 
     // Determine creation method
+    const authHeader = request.headers.get("authorization");
     const createdVia = !user ? "form" : authHeader?.startsWith("Bearer hmd_") ? "api" : "dashboard";
 
     // Ownership policy:
@@ -101,6 +104,13 @@ export async function POST(request: NextRequest) {
       createdVia,
       owner: user ? user.id : null,
     });
+
+    // Pre-warm the Redis cache for immediate fast redirects
+    setCachedLink(link.keyword, {
+      url: link.url,
+      statusCode: link.statusCode || 301,
+      isPasswordProtected: false,
+    }).catch(() => {});
 
     const base = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
     const shortUrl = `${base}/${link.keyword}`;

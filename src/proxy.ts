@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCachedLink } from "@/lib/cache";
 
 const BYPASS_PREFIXES = [
   "/admin",
@@ -46,17 +47,49 @@ export async function proxy(request: NextRequest) {
     return NextResponse.rewrite(previewUrl);
   }
 
-  // Resolve via internal API (keeps MongoDB connection in API route, not Edge)
+  // Collect request metadata for click logging
+  const ip = request.headers.get("x-forwarded-for") || "";
+  const userAgent = request.headers.get("user-agent") || "";
+  const referrer = request.headers.get("referer") || "";
+  const countryCode = request.headers.get("x-vercel-ip-country") || "";
+
+  // ── Fast path: try Redis cache first (edge-compatible, ~1ms) ──
+  try {
+    const cached = await getCachedLink(keyword);
+    if (cached) {
+      if (cached.isPasswordProtected) {
+        const passwordUrl = new URL(`/password/${keyword}`, request.url);
+        return NextResponse.rewrite(passwordUrl);
+      }
+
+      // Fire-and-forget click logging (don't await)
+      const logUrl = new URL("/api/internal/log-click", request.url);
+      fetch(logUrl.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": process.env.INTERNAL_SECRET || "",
+        },
+        body: JSON.stringify({ keyword, ip, userAgent, referrer, countryCode }),
+      }).catch(() => {});
+
+      return NextResponse.redirect(cached.url, cached.statusCode || 301);
+    }
+  } catch {
+    // Redis unavailable — fall through to internal API
+  }
+
+  // ── Slow path: resolve via internal API (MongoDB) ──
   const resolveUrl = new URL("/api/internal/resolve", request.url);
   resolveUrl.searchParams.set("keyword", keyword);
 
   try {
     const res = await fetch(resolveUrl.toString(), {
       headers: {
-        "x-forwarded-for": request.headers.get("x-forwarded-for") || "",
-        "user-agent": request.headers.get("user-agent") || "",
-        referer: request.headers.get("referer") || "",
-        "x-geo-country": request.headers.get("x-vercel-ip-country") || "",
+        "x-forwarded-for": ip,
+        "user-agent": userAgent,
+        referer: referrer,
+        "x-geo-country": countryCode,
         "x-internal-secret": process.env.INTERNAL_SECRET || "",
       },
     });

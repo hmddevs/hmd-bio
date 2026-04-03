@@ -3,7 +3,8 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { authenticateRequest } from "@/lib/auth";
+import { authenticateRequest, requireTurnstile } from "@/lib/auth";
+import { invalidateCachedLink } from "@/lib/cache";
 
 export async function DELETE(
   request: NextRequest,
@@ -11,6 +12,12 @@ export async function DELETE(
 ) {
   const user = await authenticateRequest(request);
   if (!user) return apiError("Unauthorized", 401);
+
+  // User API requires Turnstile (admins exempt)
+  if (user.role !== "admin") {
+    const tsBlock = await requireTurnstile(null, request);
+    if (tsBlock) return tsBlock;
+  }
 
   const { keyword } = await params;
   await connectDB();
@@ -25,6 +32,8 @@ export async function DELETE(
 
   await Click.deleteMany({ keyword });
   await link.deleteOne();
+
+  invalidateCachedLink(keyword).catch(() => {});
 
   return apiSuccess({ deleted: keyword });
 }

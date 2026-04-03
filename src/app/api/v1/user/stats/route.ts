@@ -3,11 +3,25 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { authenticateRequest } from "@/lib/auth";
+import { authenticateRequest, requireTurnstile } from "@/lib/auth";
+import { getCachedStats, setCachedStats } from "@/lib/cache";
 
 export async function GET(request: NextRequest) {
   const user = await authenticateRequest(request);
   if (!user) return apiError("Unauthorized", 401);
+
+  // User API requires Turnstile (admins exempt)
+  if (user.role !== "admin") {
+    const tsBlock = await requireTurnstile(null, request);
+    if (tsBlock) return tsBlock;
+  }
+
+  // Try cache first (2 min TTL per user)
+  const cacheKey = `user:${user.id}`;
+  const cached = await getCachedStats(cacheKey);
+  if (cached) {
+    return apiSuccess(cached);
+  }
 
   await connectDB();
 
@@ -73,7 +87,7 @@ export async function GET(request: NextRequest) {
   const totalClicks = totalClicksAgg[0]?.total ?? 0;
   const clicks24h = clicks24hAgg[0]?.total ?? 0;
 
-  return apiSuccess({
+  const data = {
     totalLinks,
     totalClicks,
     avgClicks: totalLinks > 0 ? Math.round((totalClicks / totalLinks) * 10) / 10 : 0,
@@ -92,5 +106,9 @@ export async function GET(request: NextRequest) {
       code: c._id,
       count: c.count,
     })),
-  });
+  };
+
+  setCachedStats(cacheKey, data, 120).catch(() => {});
+
+  return apiSuccess(data);
 }

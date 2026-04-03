@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -21,7 +21,7 @@ import TouchAppIcon from "@mui/icons-material/TouchApp";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AvTimerIcon from "@mui/icons-material/AvTimer";
 import PublicIcon from "@mui/icons-material/Public";
-import { LineChart } from "@mui/x-charts/LineChart";
+const LineChart = lazy(() => import("@mui/x-charts/LineChart").then(m => ({ default: m.LineChart })));
 import { useTheme } from "@mui/material/styles";
 import { getCountryName, getCountryFlag } from "@/lib/countries";
 
@@ -122,6 +122,7 @@ export default function DashboardPage() {
                 7-Day Click Trend
               </Typography>
               {stats?.weeklyTrend && stats.weeklyTrend.length > 0 ? (
+                <Suspense fallback={<LinearProgress />}>
                 <LineChart
                   height={200}
                   series={[
@@ -149,6 +150,7 @@ export default function DashboardPage() {
                   margin={{ top: 10, bottom: 28, left: 36, right: 10 }}
                   hideLegend
                 />
+                </Suspense>
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: "center" }}>
                   No click data yet

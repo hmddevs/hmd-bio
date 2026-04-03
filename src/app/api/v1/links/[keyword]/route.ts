@@ -7,6 +7,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest, requireAdmin } from "@/lib/auth";
 import { isReservedKeyword } from "@/lib/utils";
 import bcrypt from "bcryptjs";
+import { invalidateCachedLink } from "@/lib/cache";
 
 export async function GET(
   request: NextRequest,
@@ -99,6 +100,12 @@ export async function PUT(
       .select("-password")
       .lean();
 
+    // Invalidate cache for old and new keyword
+    invalidateCachedLink(keyword).catch(() => {});
+    if (updates.keyword && updates.keyword !== keyword) {
+      invalidateCachedLink(updates.keyword as string).catch(() => {});
+    }
+
     return apiSuccess(updated);
   } catch (err) {
     console.error("Edit link error:", err);
@@ -127,6 +134,8 @@ export async function DELETE(
 
   // Also remove click logs
   await Click.deleteMany({ keyword });
+
+  invalidateCachedLink(keyword).catch(() => {});
 
   return apiSuccess({ deleted: keyword });
 }
