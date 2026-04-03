@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
       100
     );
     const search = request.nextUrl.searchParams.get("search") || "";
+    const status = request.nextUrl.searchParams.get("status") || "";
 
     await connectDB();
 
@@ -27,13 +28,16 @@ export async function GET(request: NextRequest) {
       const regex = { $regex: escaped, $options: "i" };
       filter.$or = [{ username: regex }, { email: regex }];
     }
+    if (status && ["pending", "approved", "disabled"].includes(status)) {
+      filter.status = status;
+    }
 
     const [users, total] = await Promise.all([
       User.find(filter)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .select("username email role isVerified isDisabled createdAt")
+        .select("username email role isVerified status createdAt")
         .lean(),
       User.countDocuments(filter),
     ]);

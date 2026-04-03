@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
 
     // Auth gate: require either a valid Turnstile token OR a valid API key
     const secretKey = process.env.TURNSTILE_SECRET_KEY;
+    const authHeader = request.headers.get("authorization");
     let authenticated = false;
 
     // Check API key / session first
@@ -84,6 +85,9 @@ export async function POST(request: NextRequest) {
     // Auto-fetch title if not provided
     const linkTitle = title || (await fetchPageTitle(url));
 
+    // Determine creation method
+    const createdVia = !user ? "form" : authHeader?.startsWith("Bearer hmd_") ? "api" : "dashboard";
+
     const link = await Link.create({
       keyword,
       url,
@@ -91,6 +95,7 @@ export async function POST(request: NextRequest) {
       ip,
       clicks: 0,
       statusCode: 301,
+      createdVia,
       ...(user ? { owner: user.id } : {}),
     });
 

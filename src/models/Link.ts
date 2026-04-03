@@ -14,6 +14,7 @@ export interface ILink extends Document {
   ogDescription?: string;
   ogImage?: string;
   owner?: Types.ObjectId;
+  createdVia: "form" | "api" | "bulk" | "dashboard";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +41,7 @@ const LinkSchema = new Schema<ILink>(
     ogDescription: { type: String, default: null },
     ogImage: { type: String, default: null },
     owner: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    createdVia: { type: String, enum: ["form", "api", "bulk", "dashboard"], default: "form" },
   },
   {
     timestamps: true,

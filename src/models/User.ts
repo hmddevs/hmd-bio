@@ -6,7 +6,7 @@ export interface IUser extends Document {
   passwordHash: string;
   role: "admin" | "user";
   isVerified: boolean;
-  isDisabled: boolean;
+  status: "pending" | "approved" | "disabled";
   verificationToken?: string;
   verificationExpires?: Date;
   apiKeys: { key: string; label: string; createdAt: Date }[];
@@ -29,7 +29,7 @@ const UserSchema = new Schema<IUser>(
     passwordHash: { type: String, required: true },
     role: { type: String, enum: ["admin", "user"], default: "user" },
     isVerified: { type: Boolean, default: false },
-    isDisabled: { type: Boolean, default: false },
+    status: { type: String, enum: ["pending", "approved", "disabled"], default: "pending" },
     verificationToken: { type: String, default: null },
     verificationExpires: { type: Date, default: null },
     apiKeys: { type: [ApiKeySchema], default: [] },
