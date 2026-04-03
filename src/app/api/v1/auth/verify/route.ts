@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { apiError } from "@/lib/api-response";
+import { sendAdminApprovalRequest } from "@/lib/email";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
@@ -25,6 +26,11 @@ export async function GET(request: NextRequest) {
     user.verificationToken = undefined;
     user.verificationExpires = undefined;
     await user.save();
+
+    // Notify admin about new account pending approval (non-blocking)
+    sendAdminApprovalRequest(user.username, user.email).catch((err) =>
+      console.error("Failed to notify admin:", err)
+    );
 
     // Redirect to login with success message
     const base = (process.env.AUTH_URL || "https://hmd.bio")
