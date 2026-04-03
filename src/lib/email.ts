@@ -84,3 +84,29 @@ export async function sendApprovalEmail(
     `,
   });
 }
+
+export async function sendAdminApprovalRequest(
+  username: string,
+  email: string
+): Promise<boolean> {
+  const adminEmail = process.env.ADMIN_EMAIL || "heimdall@hmddevs.org";
+  const base = (process.env.AUTH_URL || "https://hmd.bio")
+    .trim()
+    .replace(/\/+$/, "");
+
+  return sendEmail({
+    to: adminEmail,
+    subject: `HMD.bio — New account pending approval: ${username}`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+        <h2 style="color: #fff; margin-bottom: 8px;">HMD<span style="color: #6366f1;">.bio</span></h2>
+        <p style="color: #a1a1aa; margin-bottom: 24px;">A new user has verified their email and is waiting for your approval.</p>
+        <table style="color: #d4d4d8; font-size: 14px; margin-bottom: 24px;">
+          <tr><td style="padding: 4px 12px 4px 0; color: #71717a;">Username</td><td><strong>${username}</strong></td></tr>
+          <tr><td style="padding: 4px 12px 4px 0; color: #71717a;">Email</td><td>${email}</td></tr>
+        </table>
+        <a href="${base}/admin" style="display: inline-block; padding: 12px 24px; background: #6366f1; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 600;">Review in Admin Panel</a>
+      </div>
+    `,
+  });
+}
