@@ -15,7 +15,7 @@ export default async function DashboardLayout({
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/admin/login");
+    redirect("/login");
   }
 
   // Admins go to admin dashboard
