@@ -39,3 +39,36 @@ export async function sendVerificationEmail(
     return false;
   }
 }
+
+export async function sendApprovalEmail(
+  to: string,
+  username: string
+): Promise<boolean> {
+  const base = (process.env.AUTH_URL || "https://hmd.bio")
+    .trim()
+    .replace(/\/+$/, "");
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject: "Your HMD.bio account has been approved",
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+          <h2 style="color: #fff; margin-bottom: 8px;">HMD<span style="color: #6366f1;">.bio</span></h2>
+          <p style="color: #a1a1aa; margin-bottom: 24px;">Hi <strong>${username}</strong>, your account has been approved! You can now sign in and start using HMD.bio.</p>
+          <a href="${base}" style="display: inline-block; padding: 12px 24px; background: #6366f1; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 600;">Go to HMD.bio</a>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("Email send error:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Email service error:", err);
+    return false;
+  }
+}

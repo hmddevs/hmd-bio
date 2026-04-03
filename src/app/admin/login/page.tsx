@@ -20,6 +20,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const verified = searchParams.get("verified") === "1";
+  const pending = searchParams.get("pending") === "1";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -38,8 +39,9 @@ function LoginForm() {
       });
 
       if (result?.error) {
-        setError("Invalid credentials, or account not yet verified");
+        setError("Invalid credentials, account not yet verified, or pending approval");
       } else {
+        // Role-based redirect handled by middleware/layout
         router.push("/admin");
         router.refresh();
       }
@@ -71,9 +73,15 @@ function LoginForm() {
           </Typography>
         </Box>
 
-        {verified && (
+        {verified && !pending && (
           <Alert severity="success" sx={{ mb: 2 }}>
             Email verified! You can now sign in.
+          </Alert>
+        )}
+
+        {pending && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Email verified! Your account is pending admin approval. You&apos;ll receive an email once approved.
           </Alert>
         )}
 
