@@ -124,6 +124,9 @@ function RegisterForm() {
                   Sign in
                 </MuiLink>
               </Typography>
+              <Typography variant="caption" color="text.secondary" textAlign="center">
+                After email verification, an admin will review and approve your account.
+              </Typography>
             </Box>
           </CardContent>
         </Card>
