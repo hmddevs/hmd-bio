@@ -4,6 +4,7 @@ import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { hashIP } from "@/lib/ip";
+import { encrypt } from "@/lib/encryption";
 import { UAParser } from "ua-parser-js";
 
 /**
@@ -54,12 +55,16 @@ export async function POST(request: NextRequest) {
 
       const ua = UAParser(userAgent || "");
 
+      const hasKey = !!process.env.IP_ENCRYPTION_KEY;
+      const encrypted = hasKey && ip ? encrypt(ip) : null;
+
       await Promise.all([
         Click.create({
           keyword,
           referrer: referrer || "",
           userAgent: userAgent || "",
           ip: hashIP(ip || ""),
+          ...(encrypted && { ipRaw: encrypted.ciphertext, ipIv: encrypted.iv }),
           countryCode: countryCode || "",
           browser: ua.browser.name || "",
           os: ua.os.name || "",

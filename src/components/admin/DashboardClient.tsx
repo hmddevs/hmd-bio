@@ -57,6 +57,7 @@ interface RecentClick {
   keyword: string;
   createdAt: string;
   ip: string;
+  ipReal: string;
   countryCode: string;
   browser: string;
   os: string;

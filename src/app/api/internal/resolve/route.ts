@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { hashIP } from "@/lib/ip";
+import { encrypt } from "@/lib/encryption";
 import { rateLimit } from "@/lib/rate-limit";
 import { UAParser } from "ua-parser-js";
 
@@ -54,6 +55,10 @@ export async function GET(request: NextRequest) {
   const browser = ua.browser.name || "";
   const os = ua.os.name || "";
 
+  // Encrypt raw IP for admin access
+  const hasKey = !!process.env.IP_ENCRYPTION_KEY;
+  const encrypted = hasKey ? encrypt(rawIP) : null;
+
   // Don't await — fire and forget
   Promise.all([
     Click.create({
@@ -61,6 +66,7 @@ export async function GET(request: NextRequest) {
       referrer,
       userAgent,
       ip: hashIP(rawIP),
+      ...(encrypted && { ipRaw: encrypted.ciphertext, ipIv: encrypted.iv }),
       countryCode,
       browser,
       os,
