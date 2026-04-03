@@ -5,6 +5,8 @@ export interface IClick extends Document {
   referrer: string;
   userAgent: string;
   ip: string;
+  ipRaw: string;
+  ipIv: string;
   countryCode: string;
   browser: string;
   os: string;
@@ -17,6 +19,8 @@ const ClickSchema = new Schema<IClick>(
     referrer: { type: String, default: "" },
     userAgent: { type: String, default: "" },
     ip: { type: String, default: "" },
+    ipRaw: { type: String, default: "" },
+    ipIv: { type: String, default: "" },
     countryCode: { type: String, default: "", maxlength: 2 },
     browser: { type: String, default: "" },
     os: { type: String, default: "" },

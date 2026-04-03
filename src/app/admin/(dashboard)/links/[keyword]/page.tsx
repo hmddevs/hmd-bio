@@ -115,7 +115,7 @@ export default function LinkDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [clicksData, setClicksData] = useState<{ id: string; createdAt: string; ip: string; countryCode: string; browser: string; os: string; referrer: string; userAgent: string }[]>([]);
+  const [clicksData, setClicksData] = useState<{ id: string; createdAt: string; ip: string; ipReal: string; countryCode: string; browser: string; os: string; referrer: string; userAgent: string }[]>([]);
   const [clicksTotal, setClicksTotal] = useState(0);
   const [clicksPage, setClicksPage] = useState(0);
   const [clicksLoading, setClicksLoading] = useState(false);
@@ -635,9 +635,11 @@ export default function LinkDetailPage() {
                                 </Tooltip>
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12 }}>
-                                  {click.ip}
-                                </Typography>
+                                <Tooltip title={click.ipReal ? click.ip : ""}>
+                                  <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12 }}>
+                                    {click.ipReal || click.ip}
+                                  </Typography>
+                                </Tooltip>
                               </TableCell>
                               <TableCell sx={{ whiteSpace: "nowrap" }}>
                                 {click.countryCode ? (

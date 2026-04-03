@@ -29,12 +29,10 @@ interface ClickRecord {
   linkUrl: string;
   createdAt: string;
   ip: string;
-  ipReal: string;
   countryCode: string;
   browser: string;
   os: string;
   referrer: string;
-  userAgent: string;
 }
 
 function timeAgo(dateStr: string): string {
@@ -48,7 +46,7 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-export default function ClicksPage() {
+export default function UserClicksPage() {
   const router = useRouter();
   const [clicks, setClicks] = useState<ClickRecord[]>([]);
   const [total, setTotal] = useState(0);
@@ -57,7 +55,6 @@ export default function ClicksPage() {
   const [loading, setLoading] = useState(true);
 
   const [keyword, setKeyword] = useState("");
-  const [ip, setIp] = useState("");
   const [country, setCountry] = useState("");
   const [browser, setBrowser] = useState("");
   const [os, setOs] = useState("");
@@ -69,13 +66,12 @@ export default function ClicksPage() {
       limit: String(rowsPerPage),
     });
     if (keyword) params.set("keyword", keyword);
-    if (ip) params.set("ip", ip);
     if (country) params.set("country", country);
     if (browser) params.set("browser", browser);
     if (os) params.set("os", os);
 
     try {
-      const res = await fetch(`/api/v1/admin/clicks?${params}`);
+      const res = await fetch(`/api/v1/user/clicks?${params}`);
       const json = await res.json();
       if (json.success) {
         setClicks(json.data.clicks);
@@ -86,16 +82,15 @@ export default function ClicksPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, rowsPerPage, keyword, ip, country, browser, os]);
+  }, [page, rowsPerPage, keyword, country, browser, os]);
 
   useEffect(() => {
     fetchClicks();
   }, [fetchClicks]);
 
-  // Debounced filter: reset page when filters change
   useEffect(() => {
     setPage(0);
-  }, [keyword, ip, country, browser, os]);
+  }, [keyword, country, browser, os]);
 
   return (
     <Box>
@@ -112,13 +107,6 @@ export default function ClicksPage() {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18 }} /></InputAdornment> } }}
-            sx={{ width: 150 }}
-          />
-          <TextField
-            size="small"
-            placeholder="IP address"
-            value={ip}
-            onChange={(e) => setIp(e.target.value)}
             sx={{ width: 150 }}
           />
           <TextField
@@ -163,7 +151,7 @@ export default function ClicksPage() {
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Time</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Keyword</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>IP</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Visitor ID</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Browser</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>OS</TableCell>
@@ -172,7 +160,7 @@ export default function ClicksPage() {
                 </TableHead>
                 <TableBody>
                   {clicks.map((click) => (
-                    <TableRow key={click.id} hover sx={{ cursor: "pointer" }} onClick={() => router.push(`/admin/links/${click.keyword}`)}>
+                    <TableRow key={click.id} hover sx={{ cursor: "pointer" }} onClick={() => router.push(`/dashboard/links`)}>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
                         <Tooltip title={new Date(click.createdAt).toLocaleString()}>
                           <span>{timeAgo(click.createdAt)}</span>
@@ -188,11 +176,9 @@ export default function ClicksPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Tooltip title={click.ipReal ? click.ip : ""}>
-                          <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12 }}>
-                            {click.ipReal || click.ip}
-                          </Typography>
-                        </Tooltip>
+                        <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12 }}>
+                          {click.ip}
+                        </Typography>
                       </TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
                         {click.countryCode ? (

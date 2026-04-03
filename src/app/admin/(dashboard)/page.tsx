@@ -1,6 +1,7 @@
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
+import { decrypt } from "@/lib/encryption";
 import DashboardClient from "@/components/admin/DashboardClient";
 
 export default async function AdminDashboard() {
@@ -99,7 +100,7 @@ export default async function AdminDashboard() {
     Click.find({})
       .sort({ createdAt: -1 })
       .limit(5)
-      .select("keyword createdAt ip countryCode browser os referrer")
+      .select("keyword createdAt ip ipRaw ipIv countryCode browser os referrer")
       .lean(),
   ]);
 
@@ -150,6 +151,7 @@ export default async function AdminDashboard() {
           keyword: c.keyword,
           createdAt: c.createdAt.toISOString(),
           ip: c.ip || "",
+          ipReal: c.ipRaw && c.ipIv ? decrypt(c.ipRaw, c.ipIv) : "",
           countryCode: c.countryCode || "",
           browser: c.browser || "",
           os: c.os || "",
