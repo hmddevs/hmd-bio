@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Box,
   Card,
@@ -11,6 +12,8 @@ import {
   ListItemText,
   Chip,
   LinearProgress,
+  ToggleButtonGroup,
+  ToggleButton,
 } from "@mui/material";
 import LinkIcon from "@mui/icons-material/Link";
 import TouchAppIcon from "@mui/icons-material/TouchApp";
@@ -72,6 +75,8 @@ interface DashboardData {
   recentLinks: RecentLink[];
   recentActivity: ActivityPoint[];
   weeklyTrend: { date: string; count: number }[];
+  monthlyTrend: { date: string; count: number }[];
+  quarterlyTrend: { date: string; count: number }[];
   topCountries: { code: string; count: number }[];
   linksCreatedLast7d: number;
   activeLinks: number;
@@ -81,13 +86,16 @@ interface DashboardData {
   recentClicks: RecentClick[];
 }
 
+type TrendRange = "7d" | "30d" | "90d";
+
 export default function DashboardClient({ data }: { data: DashboardData }) {
   const theme = useTheme();
   const router = useRouter();
+  const [trendRange, setTrendRange] = useState<TrendRange>("7d");
   const {
     totalLinks, totalClicks, topLinks, recentLinks, recentActivity, baseUrl,
-    weeklyTrend, topCountries, linksCreatedLast7d, activeLinks, expiredLinks, avgClicks,
-    recentClicks,
+    weeklyTrend, monthlyTrend, quarterlyTrend, topCountries, linksCreatedLast7d,
+    activeLinks, expiredLinks, avgClicks, recentClicks,
   } = data;
 
   const clicks24h = recentActivity.reduce((sum, a) => sum + a.count, 0);
@@ -135,39 +143,55 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
 
       {/* Sparkline + Velocity + Active/Expired row */}
       <Grid container spacing={2} mb={3}>
-        {/* 7-Day Sparkline */}
+        {/* Click Trend with range toggle */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ height: "100%" }}>
             <CardContent>
-              <Typography variant="subtitle1" fontWeight={600} mb={1}>
-                7-Day Click Trend
-              </Typography>
-              {weeklyTrend.length > 0 ? (
-                <LineChart
-                  height={120}
-                  series={[
-                    {
-                      data: weeklyTrend.map((d) => d.count),
-                      curve: "linear",
-                      showMark: false,
-                      color: theme.palette.primary.main,
-                    },
-                  ]}
-                  xAxis={[
-                    {
-                      data: weeklyTrend.map((d) => d.date),
-                      scaleType: "point",
-                      tickLabelStyle: { fontSize: 10, fill: theme.palette.text.secondary },
-                      valueFormatter: (v: string) => v.slice(5),
-                    },
-                  ]}
-                  yAxis={[{ tickLabelStyle: { display: "none" } }]}
-                  margin={{ top: 10, bottom: 24, left: 10, right: 10 }}
-                  hideLegend
-                />
-              ) : (
-                <Typography variant="body2" color="text.secondary">No data yet</Typography>
-              )}
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  Click Trend
+                </Typography>
+                <ToggleButtonGroup
+                  size="small"
+                  value={trendRange}
+                  exclusive
+                  onChange={(_, v) => v && setTrendRange(v)}
+                >
+                  <ToggleButton value="7d" sx={{ px: 1, py: 0.25, fontSize: 11 }}>7d</ToggleButton>
+                  <ToggleButton value="30d" sx={{ px: 1, py: 0.25, fontSize: 11 }}>30d</ToggleButton>
+                  <ToggleButton value="90d" sx={{ px: 1, py: 0.25, fontSize: 11 }}>90d</ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+              {(() => {
+                const trendData = trendRange === "7d" ? weeklyTrend : trendRange === "30d" ? monthlyTrend : quarterlyTrend;
+                if (trendData.length === 0) {
+                  return <Typography variant="body2" color="text.secondary">No data yet</Typography>;
+                }
+                return (
+                  <LineChart
+                    height={120}
+                    series={[
+                      {
+                        data: trendData.map((d) => d.count),
+                        curve: "linear",
+                        showMark: false,
+                        color: theme.palette.primary.main,
+                      },
+                    ]}
+                    xAxis={[
+                      {
+                        data: trendData.map((d) => d.date),
+                        scaleType: "point",
+                        tickLabelStyle: { fontSize: 10, fill: theme.palette.text.secondary },
+                        valueFormatter: (v: string) => v.slice(5),
+                      },
+                    ]}
+                    yAxis={[{ tickLabelStyle: { display: "none" } }]}
+                    margin={{ top: 10, bottom: 24, left: 10, right: 10 }}
+                    hideLegend
+                  />
+                );
+              })()}
             </CardContent>
           </Card>
         </Grid>
