@@ -62,8 +62,8 @@ export default function UserSettingsPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on tab change
     if (tab === 1) loadKeys();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   async function handlePasswordChange() {

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
-import { apiSuccess, apiError } from "@/lib/api-response";
+import { apiError } from "@/lib/api-response";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");

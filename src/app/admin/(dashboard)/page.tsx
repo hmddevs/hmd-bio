@@ -22,6 +22,7 @@ export default async function AdminDashboard() {
     activeLinks,
     expiredLinks,
     avgClicksAgg,
+    recentClicks,
   ] = await Promise.all([
     Link.countDocuments(),
     Link.aggregate([{ $group: { _id: null, total: { $sum: "$clicks" } } }]),
@@ -63,6 +64,12 @@ export default async function AdminDashboard() {
     Link.countDocuments({ expiresAt: { $lte: now } }),
     // Average clicks per link
     Link.aggregate([{ $group: { _id: null, avg: { $avg: "$clicks" } } }]),
+    // 5 most recent clicks
+    Click.find({})
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("keyword createdAt ip countryCode browser os referrer")
+      .lean(),
   ]);
 
   const totalClicks = totalClicksAgg[0]?.total ?? 0;
@@ -100,6 +107,15 @@ export default async function AdminDashboard() {
         expiredLinks,
         avgClicks,
         baseUrl,
+        recentClicks: recentClicks.map((c) => ({
+          keyword: c.keyword,
+          createdAt: c.createdAt.toISOString(),
+          ip: c.ip || "",
+          countryCode: c.countryCode || "",
+          browser: c.browser || "",
+          os: c.os || "",
+          referrer: c.referrer || "",
+        })),
       }}
     />
   );

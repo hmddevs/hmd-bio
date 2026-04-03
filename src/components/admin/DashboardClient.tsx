@@ -25,6 +25,17 @@ import { useTheme } from "@mui/material/styles";
 import { useRouter } from "next/navigation";
 import { getCountryName, getCountryFlag } from "@/lib/countries";
 
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 interface TopLink {
   keyword: string;
   url: string;
@@ -37,6 +48,16 @@ interface RecentLink {
   url: string;
   title?: string;
   createdAt: string;
+}
+
+interface RecentClick {
+  keyword: string;
+  createdAt: string;
+  ip: string;
+  countryCode: string;
+  browser: string;
+  os: string;
+  referrer: string;
 }
 
 interface ActivityPoint {
@@ -57,6 +78,7 @@ interface DashboardData {
   expiredLinks: number;
   avgClicks: number;
   baseUrl: string;
+  recentClicks: RecentClick[];
 }
 
 export default function DashboardClient({ data }: { data: DashboardData }) {
@@ -65,6 +87,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
   const {
     totalLinks, totalClicks, topLinks, recentLinks, recentActivity, baseUrl,
     weeklyTrend, topCountries, linksCreatedLast7d, activeLinks, expiredLinks, avgClicks,
+    recentClicks,
   } = data;
 
   const clicks24h = recentActivity.reduce((sum, a) => sum + a.count, 0);
@@ -207,7 +230,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
 
       <Grid container spacing={2} mb={3}>
         {/* Top Links */}
-        <Grid size={{ xs: 12, lg: 6 }}>
+        <Grid size={{ xs: 12, lg: 4 }}>
           <Card sx={{ height: "100%" }}>
             <CardContent>
               <Typography variant="subtitle1" fontWeight={600} mb={1}>
@@ -235,7 +258,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
         </Grid>
 
         {/* Recent Links */}
-        <Grid size={{ xs: 12, lg: 6 }}>
+        <Grid size={{ xs: 12, lg: 4 }}>
           <Card sx={{ height: "100%" }}>
             <CardContent>
               <Typography variant="subtitle1" fontWeight={600} mb={1}>
@@ -260,6 +283,46 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                   </ListItemButton>
                 ))}
               </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Recently Clicked */}
+        <Grid size={{ xs: 12, lg: 4 }}>
+          <Card sx={{ height: "100%" }}>
+            <CardContent>
+              <Typography variant="subtitle1" fontWeight={600} mb={1}>
+                Recently Clicked
+              </Typography>
+              {recentClicks.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No clicks yet</Typography>
+              ) : (
+                <List disablePadding>
+                  {recentClicks.map((click, i) => (
+                    <ListItemButton
+                      key={i}
+                      onClick={() => router.push(`/admin/links/${click.keyword}`)}
+                      sx={{ borderRadius: 1, px: 1 }}
+                    >
+                      <ListItemText
+                        primary={`/${click.keyword}`}
+                        secondary={
+                          [
+                            click.countryCode ? getCountryFlag(click.countryCode) : "",
+                            click.browser || "",
+                            click.referrer ? (() => { try { return new URL(click.referrer).hostname; } catch { return click.referrer; } })() : "Direct",
+                          ].filter(Boolean).join(" · ")
+                        }
+                        primaryTypographyProps={{ fontSize: 14, fontWeight: 500, color: "primary.main" }}
+                        secondaryTypographyProps={{ fontSize: 12, noWrap: true }}
+                      />
+                      <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap", ml: 1 }}>
+                        {timeAgo(click.createdAt)}
+                      </Typography>
+                    </ListItemButton>
+                  ))}
+                </List>
+              )}
             </CardContent>
           </Card>
         </Grid>

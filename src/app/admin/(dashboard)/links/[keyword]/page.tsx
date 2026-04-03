@@ -32,6 +32,13 @@ import {
   Tooltip,
   ToggleButton,
   ToggleButtonGroup,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TablePagination,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EditIcon from "@mui/icons-material/Edit";
@@ -42,11 +49,12 @@ import PublicIcon from "@mui/icons-material/Public";
 import DevicesIcon from "@mui/icons-material/Devices";
 import LinkIcon from "@mui/icons-material/Link";
 import TimelineIcon from "@mui/icons-material/Timeline";
+import TouchAppIcon from "@mui/icons-material/TouchApp";
 import StarIcon from "@mui/icons-material/Star";
 import { useTheme } from "@mui/material/styles";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { PieChart as MuiPieChart } from "@mui/x-charts/PieChart";
-import { getCountryInfo } from "@/lib/countries";
+import { getCountryFlag, getCountryName } from "@/lib/countries";
 
 // Lazy-load the heavy map component to reduce initial bundle
 const CountryMapSection = lazy(() => import("./CountryMap"));
@@ -107,6 +115,10 @@ export default function LinkDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [clicksData, setClicksData] = useState<{ id: string; createdAt: string; ip: string; countryCode: string; browser: string; os: string; referrer: string; userAgent: string }[]>([]);
+  const [clicksTotal, setClicksTotal] = useState(0);
+  const [clicksPage, setClicksPage] = useState(0);
+  const [clicksLoading, setClicksLoading] = useState(false);
   const [form, setForm] = useState({
     url: "",
     title: "",
@@ -152,8 +164,31 @@ export default function LinkDetailPage() {
       }
     }
     loadLink();
+  }, [keyword]);
+
+  useEffect(() => {
+     
     loadStats(period);
   }, [keyword, loadStats, period]);
+
+  const loadClicks = useCallback(async (pg: number) => {
+    setClicksLoading(true);
+    try {
+      const res = await fetch(`/api/v1/admin/clicks?keyword=${keyword}&page=${pg + 1}&limit=25`);
+      const data = await res.json();
+      if (data.success) {
+        setClicksData(data.data.clicks);
+        setClicksTotal(data.data.total);
+      }
+    } catch { /* ignore */ } finally {
+      setClicksLoading(false);
+    }
+  }, [keyword]);
+
+  // Load clicks when Clicks tab (index 4) is selected
+  useEffect(() => {
+    if (tab === 4) loadClicks(clicksPage);
+  }, [tab, clicksPage, loadClicks]);
 
   function handlePeriodChange(_: React.MouseEvent<HTMLElement>, val: Period | null) {
     if (val) {
@@ -340,6 +375,7 @@ export default function LinkDetailPage() {
             <Tab icon={<LinkIcon />} iconPosition="start" label="Referrers" />
             <Tab icon={<PublicIcon />} iconPosition="start" label="Countries" />
             <Tab icon={<DevicesIcon />} iconPosition="start" label="Browser / OS" />
+            <Tab icon={<TouchAppIcon />} iconPosition="start" label="Clicks" />
             <Tab icon={<ShareIcon />} iconPosition="start" label="Share" />
           </Tabs>
           <CardContent>
@@ -557,8 +593,96 @@ export default function LinkDetailPage() {
               </Box>
             )}
 
-            {/* Share Tab */}
+            {/* Clicks Tab */}
             {tab === 4 && (
+              <Box>
+                {clicksLoading ? (
+                  <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                    <CircularProgress />
+                  </Box>
+                ) : clicksData.length === 0 ? (
+                  <Typography color="text.secondary">No click data yet</Typography>
+                ) : (
+                  <>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 600 }}>Time</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>IP</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Browser</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>OS</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Referrer</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {clicksData.map((click) => (
+                            <TableRow key={click.id} hover>
+                              <TableCell sx={{ whiteSpace: "nowrap" }}>
+                                <Tooltip title={new Date(click.createdAt).toLocaleString()}>
+                                  <Typography variant="body2">
+                                    {(() => {
+                                      const diff = Date.now() - new Date(click.createdAt).getTime();
+                                      const mins = Math.floor(diff / 60000);
+                                      if (mins < 1) return "just now";
+                                      if (mins < 60) return `${mins}m ago`;
+                                      const hrs = Math.floor(mins / 60);
+                                      if (hrs < 24) return `${hrs}h ago`;
+                                      return `${Math.floor(hrs / 24)}d ago`;
+                                    })()}
+                                  </Typography>
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12 }}>
+                                  {click.ip}
+                                </Typography>
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: "nowrap" }}>
+                                {click.countryCode ? (
+                                  <Tooltip title={getCountryName(click.countryCode)}>
+                                    <span>{getCountryFlag(click.countryCode)} {click.countryCode}</span>
+                                  </Tooltip>
+                                ) : "—"}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" noWrap>{click.browser || "—"}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" noWrap>{click.os || "—"}</Typography>
+                              </TableCell>
+                              <TableCell sx={{ maxWidth: 200 }}>
+                                {click.referrer ? (
+                                  <Tooltip title={click.referrer}>
+                                    <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                                      {(() => { try { return new URL(click.referrer).hostname; } catch { return click.referrer; } })()}
+                                    </Typography>
+                                  </Tooltip>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">Direct</Typography>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                    <TablePagination
+                      component="div"
+                      count={clicksTotal}
+                      page={clicksPage}
+                      onPageChange={(_, p) => setClicksPage(p)}
+                      rowsPerPage={25}
+                      rowsPerPageOptions={[25]}
+                    />
+                  </>
+                )}
+              </Box>
+            )}
+
+            {/* Share Tab */}
+            {tab === 5 && (
               <Box>
                 <Alert severity="info" sx={{ mb: 2 }}>
                   Share this link: <strong>{shortUrl}</strong>
