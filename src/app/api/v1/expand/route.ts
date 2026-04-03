@@ -3,8 +3,14 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
+import { authenticateRequest } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
+  const user = await authenticateRequest(request);
+  if (!user) {
+    return apiError("Unauthorized — API key required", 401);
+  }
+
   // Rate limit: 60 req/min per IP
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const rl = rateLimit(`expand:${ip}`, { limit: 60, windowMs: 60_000 });
