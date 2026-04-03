@@ -27,6 +27,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import FilterListIcon from "@mui/icons-material/FilterList";
@@ -78,6 +82,7 @@ export default function LinksPage() {
   const [minClicks, setMinClicks] = useState("");
   const [maxClicks, setMaxClicks] = useState("");
   const [deleteKeyword, setDeleteKeyword] = useState<string | null>(null);
+  const [ownerFilter, setOwnerFilter] = useState("all");
 
   // Create Link dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -103,6 +108,7 @@ export default function LinksPage() {
       ...(dateTo ? { dateTo } : {}),
       ...(minClicks ? { minClicks } : {}),
       ...(maxClicks ? { maxClicks } : {}),
+      ...(ownerFilter !== "all" ? { ownerType: ownerFilter } : {}),
     });
 
     try {
@@ -117,7 +123,7 @@ export default function LinksPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, sort, order, dateFrom, dateTo, minClicks, maxClicks, pagination.limit]);
+  }, [search, sort, order, dateFrom, dateTo, minClicks, maxClicks, ownerFilter, pagination.limit]);
 
   useEffect(() => {
     fetchLinks(1);
@@ -283,6 +289,19 @@ export default function LinksPage() {
                 value={maxClicks}
                 onChange={(e) => setMaxClicks(e.target.value)}
               />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Owner</InputLabel>
+                <Select
+                  value={ownerFilter}
+                  label="Owner"
+                  onChange={(e) => setOwnerFilter(e.target.value)}
+                >
+                  <MenuItem value="all">All</MenuItem>
+                  <MenuItem value="public">Public</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
           </Grid>
         </Collapse>
