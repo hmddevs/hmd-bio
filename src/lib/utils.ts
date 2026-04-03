@@ -21,7 +21,7 @@ const RESERVED_KEYWORDS = new Set([
   "privacy",
   "cookies",
   "aup",
-  "register",
+  "signup",
   "favicon.ico",
   "robots.txt",
   "sitemap.xml",

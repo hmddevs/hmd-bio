@@ -64,7 +64,7 @@ export const apiKeySchema = z.object({
   label: z.string().min(1).max(100).default("Default"),
 });
 
-export const registerSchema = z.object({
+export const signupSchema = z.object({
   email: z.email("Invalid email address"),
   username: z
     .string()

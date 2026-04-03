@@ -7,6 +7,16 @@
       "has": [{ "type": "host", "value": "www.hmd.bio" }],
       "destination": "https://hmd.bio/:path",
       "permanent": true
+    },
+    {
+      "source": "/register",
+      "destination": "/signup",
+      "permanent": true
+    },
+    {
+      "source": "/api/v1/auth/register",
+      "destination": "/api/v1/auth/signup",
+      "permanent": true
     }
   ],
   "headers": [
