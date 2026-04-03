@@ -13,6 +13,7 @@ const BYPASS_PREFIXES = [
   "/privacy",
   "/cookies",
   "/aup",
+  "/register",
   "/favicon.ico",
   "/robots.txt",
   "/sitemap.xml",

@@ -61,3 +61,14 @@ export const bulkImportSchema = z.array(
 export const apiKeySchema = z.object({
   label: z.string().min(1).max(100).default("Default"),
 });
+
+export const registerSchema = z.object({
+  email: z.email("Invalid email address"),
+  username: z
+    .string()
+    .min(3, "Username must be at least 3 characters")
+    .max(30)
+    .regex(/^[a-zA-Z0-9_-]+$/, "Only alphanumeric, hyphens, and underscores allowed"),
+  password: z.string().min(8, "Password must be at least 8 characters").max(200),
+  turnstileToken: z.string().optional(),
+});

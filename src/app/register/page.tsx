@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import NextLink from "next/link";
 import {
   Box,
@@ -16,32 +15,34 @@ import {
 } from "@mui/material";
 import MuiProvider from "@/components/providers/MuiProvider";
 
-function LoginForm() {
+function RegisterForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const verified = searchParams.get("verified") === "1";
+  const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setSuccess("");
     setLoading(true);
 
     try {
-      const result = await signIn("credentials", {
-        username,
-        password,
-        redirect: false,
+      const res = await fetch("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, username, password }),
       });
+      const data = await res.json();
 
-      if (result?.error) {
-        setError("Invalid credentials, or account not yet verified");
+      if (!res.ok) {
+        setError(data.error || "Registration failed");
       } else {
-        router.push("/admin");
-        router.refresh();
+        setSuccess(data.data?.message || "Account created! Check your email.");
+        setTimeout(() => router.push("/admin/login"), 3000);
       }
     } catch {
       setError("Network error.");
@@ -67,26 +68,34 @@ function LoginForm() {
             HMD<Box component="span" sx={{ color: "primary.main" }}>.bio</Box>
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={0.5}>
-            Sign in to manage your links
+            Create your account
           </Typography>
         </Box>
 
-        {verified && (
-          <Alert severity="success" sx={{ mb: 2 }}>
-            Email verified! You can now sign in.
-          </Alert>
-        )}
-
         <Card>
           <CardContent sx={{ p: 3 }}>
-            <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Box
+              component="form"
+              onSubmit={handleSubmit}
+              sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+            >
               <TextField
-                label="Username or Email"
+                label="Email"
+                type="email"
+                required
+                fullWidth
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
+              <TextField
+                label="Username"
                 required
                 fullWidth
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
+                helperText="3–30 characters. Letters, numbers, hyphens, underscores."
               />
               <TextField
                 label="Password"
@@ -95,22 +104,24 @@ function LoginForm() {
                 fullWidth
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete="new-password"
+                helperText="At least 8 characters."
               />
               {error && <Alert severity="error">{error}</Alert>}
+              {success && <Alert severity="success">{success}</Alert>}
               <Button
                 type="submit"
                 variant="contained"
                 fullWidth
                 size="large"
-                disabled={loading}
+                disabled={loading || !!success}
               >
-                {loading ? "Signing in…" : "Sign In"}
+                {loading ? "Creating account…" : "Create Account"}
               </Button>
               <Typography variant="body2" color="text.secondary" textAlign="center">
-                Don&apos;t have an account?{" "}
-                <MuiLink component={NextLink} href="/register">
-                  Create one
+                Already have an account?{" "}
+                <MuiLink component={NextLink} href="/admin/login">
+                  Sign in
                 </MuiLink>
               </Typography>
             </Box>
@@ -121,10 +132,10 @@ function LoginForm() {
   );
 }
 
-export default function LoginPage() {
+export default function RegisterPage() {
   return (
     <MuiProvider>
-      <LoginForm />
+      <RegisterForm />
     </MuiProvider>
   );
 }

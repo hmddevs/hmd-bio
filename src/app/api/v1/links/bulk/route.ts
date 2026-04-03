@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { bulkImportSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { authenticateRequest } from "@/lib/auth";
+import { authenticateRequest, requireAdmin } from "@/lib/auth";
 import { generateKeyword, isReservedKeyword, isAllowedProtocol } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
@@ -11,6 +11,8 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return apiError("Unauthorized", 401);
   }
+  const forbidden = requireAdmin(user);
+  if (forbidden) return forbidden;
 
   try {
     const body = await request.json();

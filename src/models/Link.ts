@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, Model } from "mongoose";
+import mongoose, { Schema, Document, Model, Types } from "mongoose";
 
 export interface ILink extends Document {
   keyword: string;
@@ -13,6 +13,7 @@ export interface ILink extends Document {
   ogTitle?: string;
   ogDescription?: string;
   ogImage?: string;
+  owner?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +39,7 @@ const LinkSchema = new Schema<ILink>(
     ogTitle: { type: String, default: null },
     ogDescription: { type: String, default: null },
     ogImage: { type: String, default: null },
+    owner: { type: Schema.Types.ObjectId, ref: "User", default: null },
   },
   {
     timestamps: true,
@@ -46,6 +48,7 @@ const LinkSchema = new Schema<ILink>(
 
 // TTL index for auto-expiring links — MongoDB removes docs after expiresAt
 LinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, sparse: true });
+LinkSchema.index({ owner: 1 }, { sparse: true });
 
 export const Link: Model<ILink> =
   mongoose.models.Link || mongoose.model<ILink>("Link", LinkSchema);

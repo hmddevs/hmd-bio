@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { authenticateRequest } from "@/lib/auth";
+import { authenticateRequest, requireAdmin } from "@/lib/auth";
 
 function periodToDate(period: string): Date | null {
   const now = new Date();
@@ -27,6 +27,8 @@ export async function GET(
   if (!user) {
     return apiError("Unauthorized", 401);
   }
+  const forbidden = requireAdmin(user);
+  if (forbidden) return forbidden;
 
   try {
     const { keyword } = await params;

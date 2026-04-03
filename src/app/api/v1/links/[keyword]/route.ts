@@ -4,7 +4,7 @@ import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { editLinkSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { authenticateRequest } from "@/lib/auth";
+import { authenticateRequest, requireAdmin } from "@/lib/auth";
 import { isReservedKeyword } from "@/lib/utils";
 import bcrypt from "bcryptjs";
 
@@ -16,6 +16,8 @@ export async function GET(
   if (!user) {
     return apiError("Unauthorized", 401);
   }
+  const forbidden = requireAdmin(user);
+  if (forbidden) return forbidden;
 
   const { keyword } = await params;
   await connectDB();
@@ -36,6 +38,8 @@ export async function PUT(
   if (!user) {
     return apiError("Unauthorized", 401);
   }
+  const forbidden = requireAdmin(user);
+  if (forbidden) return forbidden;
 
   try {
     const { keyword } = await params;
@@ -110,6 +114,8 @@ export async function DELETE(
   if (!user) {
     return apiError("Unauthorized", 401);
   }
+  const forbidden = requireAdmin(user);
+  if (forbidden) return forbidden;
 
   const { keyword } = await params;
   await connectDB();
