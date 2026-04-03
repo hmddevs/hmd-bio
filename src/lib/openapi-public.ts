@@ -188,10 +188,10 @@ export const openApiPublicSpec = {
     },
 
     // ── Auth ────────────────────────────────────────────────
-    "/api/v1/auth/register": {
+    "/api/v1/auth/signup": {
       post: {
         tags: ["Auth"],
-        summary: "Register a new account",
+        summary: "Sign up for a new account",
         requestBody: {
           required: true,
           content: {
