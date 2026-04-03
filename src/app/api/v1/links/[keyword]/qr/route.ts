@@ -2,15 +2,15 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { auth } from "@/lib/auth";
+import { authenticateRequest } from "@/lib/auth";
 import QRCode from "qrcode";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await authenticateRequest(request);
+  if (!user) {
     return apiError("Unauthorized", 401);
   }
 

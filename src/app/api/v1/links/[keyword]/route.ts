@@ -4,16 +4,16 @@ import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { editLinkSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { auth } from "@/lib/auth";
+import { authenticateRequest } from "@/lib/auth";
 import { isReservedKeyword } from "@/lib/utils";
 import bcrypt from "bcryptjs";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await authenticateRequest(request);
+  if (!user) {
     return apiError("Unauthorized", 401);
   }
 
@@ -32,8 +32,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await authenticateRequest(request);
+  if (!user) {
     return apiError("Unauthorized", 401);
   }
 
@@ -103,11 +103,11 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await authenticateRequest(request);
+  if (!user) {
     return apiError("Unauthorized", 401);
   }
 

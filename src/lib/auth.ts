@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
+import { NextRequest } from "next/server";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -53,3 +54,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 });
+
+/**
+ * Authenticate a request via session cookie OR API key (Bearer token).
+ * Returns the authenticated user info or null.
+ */
+export async function authenticateRequest(
+  request?: NextRequest
+): Promise<{ id: string; name: string; role: string } | null> {
+  // 1. Try session auth first
+  const session = await auth();
+  if (session?.user) {
+    return {
+      id: session.user.id!,
+      name: session.user.name!,
+      role: session.user.role ?? "admin",
+    };
+  }
+
+  // 2. Try API key via Authorization header
+  if (!request) return null;
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer hmd_")) return null;
+
+  const apiKey = authHeader.slice(7); // "Bearer " = 7 chars
+  await connectDB();
+
+  const user = await User.findOne({ "apiKeys.key": apiKey }).lean();
+  if (!user) return null;
+
+  return {
+    id: user._id.toString(),
+    name: user.username,
+    role: user.role,
+  };
+}
