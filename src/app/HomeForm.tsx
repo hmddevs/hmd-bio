@@ -28,8 +28,8 @@ const FEATURES = [
   },
   {
     icon: "🆓",
-    title: "Free & No Sign-Up",
-    desc: "Shorten unlimited links without an account.",
+    title: "Free to Use",
+    desc: "Shorten links instantly — no account required. Sign up for analytics & more.",
   },
 ];
 
@@ -121,6 +121,20 @@ export default function HomeForm() {
         <p className="mt-3 text-lg text-gray-500 dark:text-gray-400 max-w-md mx-auto">
           Shorten links, track clicks, and share with confidence.
         </p>
+        <div className="mt-5 flex items-center justify-center gap-3">
+          <Link
+            href="/login"
+            className="px-5 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            Sign In
+          </Link>
+          <Link
+            href="/signup"
+            className="px-5 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          >
+            Create Account
+          </Link>
+        </div>
       </section>
 
       {SITE_KEY && (
@@ -260,6 +274,7 @@ export default function HomeForm() {
             <Link href="/cookies" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Cookies</Link>
             <Link href="/aup" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">AUP</Link>
             <Link href="/docs" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">API Docs</Link>
+            <Link href="/login" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Sign In</Link>
           </nav>
         </div>
       </footer>
