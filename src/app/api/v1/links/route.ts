@@ -39,6 +39,15 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // Owner-type filter: "public" (no owner), "admin", or a specific user id
+    const ownerType = searchParams.get("ownerType");
+    if (ownerType === "public") {
+      filter.owner = null;
+    } else if (ownerType && ownerType !== "all") {
+      // ownerType is a user ID
+      filter.owner = ownerType;
+    }
+
     if (dateFrom || dateTo) {
       filter.createdAt = {};
       if (dateFrom) (filter.createdAt as Record<string, unknown>).$gte = new Date(dateFrom);

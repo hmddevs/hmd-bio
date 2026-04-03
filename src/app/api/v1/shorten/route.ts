@@ -88,6 +88,9 @@ export async function POST(request: NextRequest) {
     // Determine creation method
     const createdVia = !user ? "form" : authHeader?.startsWith("Bearer hmd_") ? "api" : "dashboard";
 
+    // Ownership policy:
+    // - Authenticated users → owner = user.id
+    // - Anonymous (unauthenticated) → owner = null ("public" link, admin-only manageable)
     const link = await Link.create({
       keyword,
       url,
@@ -96,7 +99,7 @@ export async function POST(request: NextRequest) {
       clicks: 0,
       statusCode: 301,
       createdVia,
-      ...(user ? { owner: user.id } : {}),
+      owner: user ? user.id : null,
     });
 
     const base = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
