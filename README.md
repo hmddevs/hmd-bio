@@ -2,7 +2,7 @@
 
 **URL Shortener & Link Management Platform**
 
-A fast, feature-rich URL shortener with user dashboards, analytics, API access, and admin tools — built by [HMD Developments](https://hmddevs.org). Online since May 2023; rebuilt from the ground up in 2026 with a modern stack.
+A fast, feature-rich URL shortener with user dashboards, analytics, API access, and admin tools. Built by [HMD Developments](https://hmddevs.org). Online since May 2023; rebuilt from the ground up in 2026 with a modern stack.
 
 ## Live
 
@@ -11,23 +11,23 @@ A fast, feature-rich URL shortener with user dashboards, analytics, API access, 
 ## Features
 
 ### For Everyone
-- Shorten URLs instantly — custom or auto-generated keywords
+- Shorten URLs instantly: custom or auto-generated keywords
 - Link preview pages with destination info
 - Password-protected links
 - Public stats via `hmd.bio/keyword+` (owner-only metrics)
 - REST API with Swagger docs at `/docs`
 
 ### For Users
-- Dashboard — manage links, view analytics, generate QR codes
+- Dashboard: manage links, view analytics, generate QR codes
 - API key management (up to 5 keys per account)
 - Per-link analytics: clicks, countries (geo map), referrer domains, 30-day timeline
 - Bookmarklets for one-click shortening from any page
-- Edit links — change destination, keyword, title, status code
+- Edit links: change destination, keyword, title, status code
 
 ### For Admins
-- Full platform management — links, users, approvals
+- Full platform management: links, users, approvals
 - Global statistics and per-link deep analytics
-- System settings — keyword mode (random / sequential), site options
+- System settings: keyword mode (random / sequential), site options
 
 ### API
 - Public & User tiers with Cloudflare Turnstile bot protection
@@ -144,13 +144,13 @@ pnpm lint         # Run ESLint
 
 ## Security
 
-- **CSP** — Strict Content-Security-Policy with script/style/frame restrictions
-- **HSTS** — 2-year max-age with includeSubDomains and preload
-- **Headers** — X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin
-- **Permissions-Policy** — Camera, microphone, geolocation blocked
-- **Rate Limiting** — Per-tier limits via Upstash Redis (30/min public, 100/min authenticated)
-- **Bot Protection** — Cloudflare Turnstile on all public endpoints
-- **IP Privacy** — Visitor IPs are hashed before storage
+- **CSP**: strict Content-Security-Policy with script/style/frame restrictions
+- **HSTS**: 2-year max-age with includeSubDomains and preload
+- **Headers**: X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin
+- **Permissions-Policy**: camera, microphone, geolocation blocked
+- **Rate Limiting**: per-tier limits via Upstash Redis (30/min public, 100/min authenticated)
+- **Bot Protection**: Cloudflare Turnstile on all public endpoints
+- **IP Privacy**: visitor IPs are hashed before storage
 
 ## Deployment
 
@@ -168,7 +168,7 @@ vercel --prod
 
 ## License
 
-[MIT](LICENSE) — [HMD Developments](https://hmddevs.org)
+[MIT](LICENSE)
 
 ---
 
