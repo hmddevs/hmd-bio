@@ -4,9 +4,9 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { changeEmailSchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api-response";
+import { apiSuccess, apiError } from "@/lib/api/api-response";
 import { auth } from "@/lib/auth";
-import { sendEmailChangeConfirmation } from "@/lib/email";
+import { sendEmailChangeConfirmation } from "@/lib/integrations/email";
 
 export async function PUT(request: NextRequest) {
   const session = await auth();

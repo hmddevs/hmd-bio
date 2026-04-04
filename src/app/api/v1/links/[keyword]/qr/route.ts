@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
-import { apiSuccess, apiError } from "@/lib/api-response";
+import { apiSuccess, apiError } from "@/lib/api/api-response";
 import { authenticateRequest, requireAdmin } from "@/lib/auth";
 import QRCode from "qrcode";
 

@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { NextRequest } from "next/server";
-import { apiError } from "@/lib/api-response";
+import { apiError } from "@/lib/api/api-response";
 import { verifyTurnstile } from "@/lib/utils";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({

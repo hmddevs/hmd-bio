@@ -3,13 +3,13 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { hashIP } from "@/lib/ip";
-import { encrypt } from "@/lib/encryption";
-import { rateLimit } from "@/lib/rate-limit";
+import { encrypt } from "@/lib/integrations/encryption";
+import { rateLimit } from "@/lib/api/rate-limit";
 import { UAParser } from "ua-parser-js";
 import {
   setCachedLink,
   type CachedLink,
-} from "@/lib/cache";
+} from "@/lib/integrations/cache";
 
 /**
  * Internal resolve endpoint called by middleware.

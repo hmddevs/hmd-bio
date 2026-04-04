@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
-import { apiError } from "@/lib/api-response";
-import { sendAdminApprovalRequest } from "@/lib/email";
+import { apiError } from "@/lib/api/api-response";
+import { sendAdminApprovalRequest } from "@/lib/integrations/email";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
