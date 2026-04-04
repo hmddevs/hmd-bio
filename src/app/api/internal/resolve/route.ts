@@ -7,7 +7,6 @@ import { encrypt } from "@/lib/encryption";
 import { rateLimit } from "@/lib/rate-limit";
 import { UAParser } from "ua-parser-js";
 import {
-  getCachedLink,
   setCachedLink,
   type CachedLink,
 } from "@/lib/cache";
@@ -38,32 +37,27 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "Too many requests" }, { status: 429 });
   }
 
-  // Try Redis cache first
-  let linkData: CachedLink | null = await getCachedLink(keyword);
+  // Proxy already checked Redis — skip redundant lookup and go straight to MongoDB
+  await connectDB();
 
-  if (!linkData) {
-    // Cache miss — query MongoDB
-    await connectDB();
-
-    const link = await Link.findOne({ keyword }).select("+password").lean();
-    if (!link) {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
-
-    // Check expiration
-    if (link.expiresAt && new Date(link.expiresAt) < new Date()) {
-      return Response.json({ error: "Link expired" }, { status: 410 });
-    }
-
-    linkData = {
-      url: link.url,
-      statusCode: link.statusCode || 301,
-      isPasswordProtected: !!link.isPasswordProtected,
-    };
-
-    // Populate cache for next time (fire-and-forget)
-    setCachedLink(keyword, linkData).catch(() => {});
+  const link = await Link.findOne({ keyword }).lean();
+  if (!link) {
+    return Response.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Check expiration
+  if (link.expiresAt && new Date(link.expiresAt) < new Date()) {
+    return Response.json({ error: "Link expired" }, { status: 410 });
+  }
+
+  const linkData: CachedLink = {
+    url: link.url,
+    statusCode: link.statusCode || 301,
+    isPasswordProtected: !!link.isPasswordProtected,
+  };
+
+  // Populate cache for next time (fire-and-forget)
+  setCachedLink(keyword, linkData).catch(() => {});
 
   // Log click asynchronously (fire-and-forget)
   const rawIP = clientIP;
@@ -79,26 +73,22 @@ export async function GET(request: NextRequest) {
   const hasKey = !!process.env.IP_ENCRYPTION_KEY;
   const encrypted = hasKey ? encrypt(rawIP) : null;
 
-  // Don't await — fire and forget (connectDB needed for click logging)
-  connectDB()
-    .then(() =>
-      Promise.all([
-        Click.create({
-          keyword,
-          referrer,
-          userAgent,
-          ip: hashIP(rawIP),
-          ...(encrypted && { ipRaw: encrypted.ciphertext, ipIv: encrypted.iv }),
-          countryCode,
-          browser,
-          os,
-        }),
-        Link.updateOne({ keyword }, { $inc: { clicks: 1 } }),
-      ])
-    )
-    .catch((err) => {
-      console.error("Click logging error:", err);
-    });
+  // Fire-and-forget click logging (DB already connected)
+  Promise.all([
+    Click.create({
+      keyword,
+      referrer,
+      userAgent,
+      ip: hashIP(rawIP),
+      ...(encrypted && { ipRaw: encrypted.ciphertext, ipIv: encrypted.iv }),
+      countryCode,
+      browser,
+      os,
+    }),
+    Link.updateOne({ keyword }, { $inc: { clicks: 1 } }),
+  ]).catch((err) => {
+    console.error("Click logging error:", err);
+  });
 
   return Response.json(linkData);
 }

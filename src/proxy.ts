@@ -4,23 +4,17 @@ import { getCachedLink } from "@/lib/cache";
 const BYPASS_PREFIXES = [
   "/admin",
   "/api",
-  "/_next",
-  "/assets",
+  "/dashboard",
+  "/docs",
+  "/login",
+  "/signup",
   "/preview",
   "/password",
   "/not-found",
-  "/docs",
   "/terms",
   "/privacy",
   "/cookies",
   "/aup",
-
-  "/login",
-  "/signup",
-  "/dashboard",
-  "/favicon.ico",
-  "/robots.txt",
-  "/sitemap.xml",
 ];
 
 export async function proxy(request: NextRequest) {
@@ -114,5 +108,12 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|assets/).*)"],
+  matcher: [
+    /*
+     * Match short-link paths only: single path segment, no dots (excludes files).
+     * Excludes: /_next, /api, /admin, /dashboard, /docs, /login, /signup,
+     * /preview, /password, /not-found, /(legal pages), static files.
+     */
+    "/((?!_next|api|admin|dashboard|docs|login|signup|preview|password|not-found|terms|privacy|cookies|aup|assets|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|icon|apple-icon|opengraph-image).*)",
+  ],
 };

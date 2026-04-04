@@ -24,7 +24,7 @@ export interface CachedLink {
 }
 
 const LINK_PREFIX = "link:";
-const LINK_TTL = 3600; // 1 hour
+const LINK_TTL = 86400; // 24 hours
 
 export async function getCachedLink(
   keyword: string
@@ -61,7 +61,7 @@ export async function invalidateCachedLink(keyword: string): Promise<void> {
 // ─── Stats Cache ───────────────────────────────────────────────
 
 const STATS_PREFIX = "stats:";
-const STATS_TTL = 300; // 5 minutes
+const STATS_TTL = 900; // 15 minutes
 
 export async function getCachedStats<T>(key: string): Promise<T | null> {
   if (!redis) return null;
