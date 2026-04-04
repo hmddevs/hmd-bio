@@ -190,7 +190,7 @@ export default function MyLinksPage() {
                 </TableRow>
               ) : (
                 links.map((link) => (
-                  <TableRow key={link._id} hover>
+                  <TableRow key={link._id} hover sx={{ cursor: "pointer" }} onClick={() => router.push(`/dashboard/links/${link.keyword}`)}>
                     <TableCell>
                       <Typography variant="body2" fontWeight={500} color="primary.main">
                         {baseUrl}/{link.keyword}
@@ -216,7 +216,7 @@ export default function MyLinksPage() {
                     </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                       <Tooltip title="Copy short URL">
-                        <IconButton size="small" onClick={() => copyToClipboard(link.keyword)}>
+                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); copyToClipboard(link.keyword); }}>
                           <ContentCopyIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -224,7 +224,7 @@ export default function MyLinksPage() {
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => setDeleteKeyword(link.keyword)}
+                          onClick={(e) => { e.stopPropagation(); setDeleteKeyword(link.keyword); }}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>

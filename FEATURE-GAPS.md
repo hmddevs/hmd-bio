@@ -2,13 +2,14 @@
 
 ## Missing Features
 
-### 1. Link Editing (High Priority)
-YOURLS allows editing a link's URL, keyword, and title in-place from the admin dashboard. hmd-bio has no edit UI or API endpoint — once a link is created, it can only be deleted and re-created.
-
-**What's needed:**
-- `PUT /api/v1/links/[keyword]` endpoint (update URL, title, keyword, statusCode, OG fields)
-- Admin UI: edit form in the link detail page
-- If keyword changes, update all Click documents referencing the old keyword
+### 1. ~~Link Editing~~ ✅ Done
+Admin already has full link editing (PUT /api/v1/links/[keyword], edit dialog, keyword change with Click migration).
+User dashboard now also has:
+- `GET/PUT /api/v1/user/links/[keyword]` (ownership-checked)
+- `/dashboard/links/[keyword]` detail page with edit dialog, stats, QR, share
+- `GET /api/v1/user/stats/[keyword]` (ownership-checked per-link stats)
+- `POST /api/v1/user/links/[keyword]/qr` (ownership-checked QR generation)
+- Clickable rows in link list → detail page navigation
 
 ---
 
