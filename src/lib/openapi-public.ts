@@ -5,13 +5,12 @@ export const openApiPublicSpec = {
     version: "1.0.0",
     description: `URL shortening API by HMD Developments.
 
-**Three API tiers:**
+**Two API tiers:**
 
 | Tier | Authentication | Rate Limit | Description |
 |------|---------------|------------|-------------|
 | **Public** | Turnstile token | 30 req/min | Shorten, expand, stats — no account needed |
 | **User** | API key + Turnstile token | 100 req/min | Manage your own links, clicks & analytics |
-| **Admin** | API key (admin role) | 100 req/min | Full platform management (separate docs) |
 
 **Turnstile tokens** are obtained client-side via the [Cloudflare Turnstile widget](https://developers.cloudflare.com/turnstile/). Pass them as \`turnstileToken\` in the request body or as the \`X-Turnstile-Token\` header for GET requests.
 
