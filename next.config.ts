@@ -24,11 +24,11 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://*.sentry-cdn.com https://va.vercel-scripts.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://*.sentry-cdn.com https://va.vercel-scripts.com https://static.cloudflareinsights.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
               "font-src 'self'",
-              "connect-src 'self' https://challenges.cloudflare.com https://*.ingest.sentry.io https://va.vercel-scripts.com https://vitals.vercel-insights.com",
+              "connect-src 'self' https://challenges.cloudflare.com https://*.ingest.sentry.io https://va.vercel-scripts.com https://vitals.vercel-insights.com https://cloudflareinsights.com https://static.cloudflareinsights.com https://*.google-analytics.com https://stats.g.doubleclick.net",
               "frame-src https://challenges.cloudflare.com",
               "frame-ancestors 'none'",
             ].join("; "),
