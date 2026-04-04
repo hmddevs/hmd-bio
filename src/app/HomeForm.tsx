@@ -18,17 +18,14 @@ const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 const FEATURES = [
   {
-    icon: "⚡",
     title: "Instant Shortening",
     desc: "Paste a link, get a short URL in milliseconds.",
   },
   {
-    icon: "🎨",
     title: "Custom Keywords",
     desc: "Choose your own branded short slug.",
   },
   {
-    icon: "🆓",
     title: "Free to Use",
     desc: "Shorten links instantly — no account required. Sign up for analytics & more.",
   },
@@ -262,7 +259,6 @@ export default function HomeForm() {
               key={f.title}
               className="p-5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 hover:border-blue-300 dark:hover:border-blue-800 transition-colors"
             >
-              <span className="text-2xl mb-2 block">{f.icon}</span>
               <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
                 {f.title}
               </h3>

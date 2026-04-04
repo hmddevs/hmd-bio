@@ -296,12 +296,12 @@ export function getCountryName(code: string | undefined | null): string {
 }
 
 export function getCountryFlag(code: string | undefined | null): string {
-  if (!code) return "🏳️";
-  return COUNTRIES[code.toUpperCase()]?.flag ?? "🏳️";
+  if (!code) return "--";
+  return COUNTRIES[code.toUpperCase()]?.flag ?? "--";
 }
 
 export function getCountryInfo(code: string | undefined | null): { name: string; flag: string } {
-  if (!code) return { name: "Unknown", flag: "🏳️" };
+  if (!code) return { name: "Unknown", flag: "--" };
   const upper = code.toUpperCase();
-  return COUNTRIES[upper] ?? { name: code, flag: "🏳️" };
+  return COUNTRIES[upper] ?? { name: code, flag: "--" };
 }

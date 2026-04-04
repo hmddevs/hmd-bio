@@ -1,42 +1,42 @@
-# 🔗 HMD.bio
+# HMD.bio
 
 **URL Shortener & Link Management Platform**
 
-A fast, feature-rich URL shortener with user dashboards, analytics, API access, and admin tools — built by [HMD Developments](https://hmddevs.org).
+A fast, feature-rich URL shortener with user dashboards, analytics, API access, and admin tools — built by [HMD Developments](https://hmddevs.org). Online since May 2023; rebuilt from the ground up in 2026 with a modern stack.
 
-## 🌐 Live
+## Live
 
 **[hmd.bio](https://hmd.bio)**
 
-## ✨ Features
+## Features
 
 ### For Everyone
-- 🔗 Shorten URLs instantly — custom or auto-generated keywords
-- 🔍 Link preview pages with destination info
-- 🔒 Password-protected links
-- 📊 Public stats via `hmd.bio/keyword+` (owner-only metrics)
-- 📄 REST API with Swagger docs at `/docs`
+- Shorten URLs instantly — custom or auto-generated keywords
+- Link preview pages with destination info
+- Password-protected links
+- Public stats via `hmd.bio/keyword+` (owner-only metrics)
+- REST API with Swagger docs at `/docs`
 
 ### For Users
-- 📋 Dashboard — manage links, view analytics, generate QR codes
-- 🔑 API key management (up to 5 keys per account)
-- 🌍 Per-link analytics: clicks, countries (geo map), referrer domains, 30-day timeline
-- 🔖 Bookmarklets for one-click shortening from any page
-- ✏️ Edit links — change destination, keyword, title, status code
+- Dashboard — manage links, view analytics, generate QR codes
+- API key management (up to 5 keys per account)
+- Per-link analytics: clicks, countries (geo map), referrer domains, 30-day timeline
+- Bookmarklets for one-click shortening from any page
+- Edit links — change destination, keyword, title, status code
 
 ### For Admins
-- 🛠️ Full platform management — links, users, approvals
-- 📈 Global statistics and per-link deep analytics
-- ⚙️ System settings — keyword mode (random / sequential), site options
+- Full platform management — links, users, approvals
+- Global statistics and per-link deep analytics
+- System settings — keyword mode (random / sequential), site options
 
 ### API
-- 📡 Public & User tiers with Cloudflare Turnstile bot protection
-- 📦 Output formats: JSON, XML, JSONP, plain text (`?format=`)
-- 💡 Fuzzy keyword suggestions on conflicts (409 with alternatives)
-- 🔢 Sequential keyword mode with base-62 encoding
-- 📌 Version endpoint (`/api/v1/version`)
+- Public & User tiers with Cloudflare Turnstile bot protection
+- Output formats: JSON, XML, JSONP, plain text (`?format=`)
+- Fuzzy keyword suggestions on conflicts (409 with alternatives)
+- Sequential keyword mode with base-62 encoding
+- Version endpoint (`/api/v1/version`)
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -51,7 +51,7 @@ A fast, feature-rich URL shortener with user dashboards, analytics, API access, 
 | Monitoring | Sentry + Vercel Analytics + Speed Insights |
 | Hosting | Vercel (LHR1) |
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 src/
@@ -81,7 +81,7 @@ src/
 └── proxy.ts                # Edge middleware for short URL resolution
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -118,7 +118,7 @@ pnpm start        # Start production server
 pnpm lint         # Run ESLint
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Required Environment Variables
 
@@ -142,7 +142,7 @@ pnpm lint         # Run ESLint
 | `RESEND_API_KEY` | Resend API key for verification emails |
 | `SENTRY_DSN` | Sentry error tracking |
 
-## 🔒 Security
+## Security
 
 - **CSP** — Strict Content-Security-Policy with script/style/frame restrictions
 - **HSTS** — 2-year max-age with includeSubDomains and preload
@@ -152,7 +152,7 @@ pnpm lint         # Run ESLint
 - **Bot Protection** — Cloudflare Turnstile on all public endpoints
 - **IP Privacy** — Visitor IPs are hashed before storage
 
-## 🚢 Deployment
+## Deployment
 
 ### Vercel (Recommended)
 
@@ -166,10 +166,10 @@ pnpm lint         # Run ESLint
 vercel --prod
 ```
 
-## 📄 License
+## License
 
 [MIT](LICENSE) — [HMD Developments](https://hmddevs.org)
 
 ---
 
-Built with care by [HMD Developments](https://hmddevs.org)
+Built by [HMD Developments](https://hmddevs.org)
