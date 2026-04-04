@@ -17,6 +17,7 @@ const BYPASS_PREFIXES = [
 
   "/login",
   "/signup",
+  "/dashboard",
   "/favicon.ico",
   "/robots.txt",
   "/sitemap.xml",
