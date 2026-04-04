@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, FormEvent, Suspense } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import NextLink from "next/link";
 import {
@@ -19,8 +19,10 @@ import MuiProvider from "@/components/providers/MuiProvider";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { update: updateSession } = useSession();
   const verified = searchParams.get("verified") === "1";
   const pending = searchParams.get("pending") === "1";
+  const emailChange = searchParams.get("emailChange");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -48,7 +50,10 @@ function LoginForm() {
       if (result?.error) {
         setError("Invalid credentials, account not yet verified, or pending approval");
       } else {
-        router.push("/dashboard");
+        // Fetch updated session to get user role for redirect
+        const session = await updateSession();
+        const role = session?.user?.role;
+        router.push(role === "admin" ? "/admin" : "/dashboard");
         router.refresh();
       }
     } catch {
@@ -114,6 +119,32 @@ function LoginForm() {
         {pending && (
           <Alert severity="info" sx={{ mb: 2 }}>
             Email verified! Your account is pending admin approval. You&apos;ll receive an email once approved.
+          </Alert>
+        )}
+
+        {emailChange === "success" && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Email address changed successfully. Please sign in with your new email.
+          </Alert>
+        )}
+        {emailChange === "expired" && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Email change link has expired. Please request a new one.
+          </Alert>
+        )}
+        {emailChange === "taken" && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            That email address is already in use by another account.
+          </Alert>
+        )}
+        {emailChange === "invalid" && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Invalid email change link.
+          </Alert>
+        )}
+        {emailChange === "error" && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Something went wrong. Please try again.
           </Alert>
         )}
 

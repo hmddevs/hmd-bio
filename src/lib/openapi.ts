@@ -390,7 +390,7 @@ export const openApiPrivateSpec = {
         type: "apiKey",
         in: "cookie",
         name: "next-auth.session-token",
-        description: "Session cookie (sign in via /admin/login)",
+        description: "Session cookie (sign in via /login)",
       },
     },
   },
