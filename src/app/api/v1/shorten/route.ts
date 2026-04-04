@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
+import { Option } from "@/models/Option";
 import { shortenSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import {
@@ -9,10 +10,13 @@ import {
   isAllowedProtocol,
   fetchPageTitle,
   verifyTurnstile,
+  generateKeywordSuggestions,
+  numberToBase62,
 } from "@/lib/utils";
 import { authenticateRequest } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { setCachedLink } from "@/lib/cache";
+import { formatResponse } from "@/lib/format-response";
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,7 +65,24 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     // Generate or validate keyword
-    let keyword = customKeyword?.trim() || generateKeyword();
+    let keyword = customKeyword?.trim() || "";
+
+    if (!keyword) {
+      // Check if sequential mode is enabled
+      const modeOption = await Option.findOne({ key: "keywordMode" }).lean();
+      const mode = (modeOption?.value as string) || "random";
+
+      if (mode === "sequential") {
+        const counter = await Option.findOneAndUpdate(
+          { key: "nextSequentialId" },
+          { $inc: { value: 1 } },
+          { upsert: true, new: true }
+        );
+        keyword = numberToBase62(counter.value as number);
+      } else {
+        keyword = generateKeyword();
+      }
+    }
 
     if (isReservedKeyword(keyword)) {
       return apiError("This keyword is reserved", 400);
@@ -70,7 +91,16 @@ export async function POST(request: NextRequest) {
     // Check if keyword is available (retry with random if auto-generated)
     let existing = await Link.findOne({ keyword }).lean();
     if (existing && customKeyword) {
-      return apiError("Keyword already in use", 409);
+      const suggestions = generateKeywordSuggestions(customKeyword);
+      // Filter out any that are already taken
+      const available: string[] = [];
+      for (const s of suggestions) {
+        if (!(await Link.findOne({ keyword: s }).lean()) && !isReservedKeyword(s)) {
+          available.push(s);
+        }
+        if (available.length >= 3) break;
+      }
+      return apiError("Keyword already in use", 409, available.length > 0 ? available : undefined);
     }
     while (existing) {
       keyword = generateKeyword();
@@ -113,16 +143,21 @@ export async function POST(request: NextRequest) {
     const base = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
     const shortUrl = `${base}/${link.keyword}`;
 
-    return apiSuccess(
-      {
-        keyword: link.keyword,
-        url: link.url,
-        shortUrl,
-        title: link.title,
-        createdAt: link.createdAt,
-      },
-      201
-    );
+    const data = {
+      keyword: link.keyword,
+      url: link.url,
+      shortUrl,
+      title: link.title,
+      createdAt: link.createdAt,
+    };
+
+    const format = request.nextUrl.searchParams.get("format");
+    if (format && format !== "json") {
+      const cb = request.nextUrl.searchParams.get("callback");
+      return formatResponse(data as unknown as Record<string, unknown>, format, 201, cb, "shortUrl");
+    }
+
+    return apiSuccess(data, 201);
   } catch (err) {
     console.error("Shorten error:", err);
     return apiError("Internal server error", 500);

@@ -13,97 +13,65 @@ User dashboard now also has:
 
 ---
 
-### 2. Bookmarklets (Medium Priority)
-YOURLS provides 4 bookmarklet types on `/admin/tools.php`:
-- **Standard** — opens a popup to shorten the current page
-- **Instant** — shortens immediately, shows result in a small overlay
-- **Custom Keyword** — prompts for a custom keyword before shortening
-- **Simple** — redirects to the YOURLS admin with the URL pre-filled
-
-These let users quickly shorten any page from their browser toolbar.
-
-**What's needed:**
-- A `/admin/tools` page with copyable bookmarklet `javascript:` links
-- Each bookmarklet calls `POST /api/v1/shorten` with the current page URL
-- A lightweight popup/overlay HTML page that the bookmarklet opens
+### 2. ~~Bookmarklets~~ ✅ Done
+- `/admin/tools` and `/dashboard/tools` pages with draggable bookmarklet links
+- 3 bookmarklet types: Popup Shorten, Custom Keyword, Quick Shorten
+- `/bookmarklet` lightweight popup page (session-based auth, auto-shorten, copy)
+- Tools nav item added to both admin and user sidebars
 
 ---
 
-### 3. Geo-Location Map Visualization (Medium Priority)
-YOURLS renders a Google Charts geo map per link showing click distribution by country. hmd-bio stores `countryCode` in Click documents but doesn't visualize it.
-
-**What's needed:**
-- Aggregate clicks by `countryCode` per link
-- Render a choropleth/geo map (e.g., `react-simple-maps` or Google GeoChart)
-- Add to the link detail/stats page
+### 3. ~~Geo-Location Map Visualization~~ ✅ Done (pre-existing)
+Already implemented via `CountryMap.tsx` (react-simple-maps choropleth) on both admin and user link detail pages.
 
 ---
 
-### 4. Referrer Grouping (Low Priority)
-YOURLS groups referrers by domain (e.g., "twitter.com — 45 clicks") with drill-down to full URLs. hmd-bio stores the full `referrer` string but only shows it as raw text in click logs.
-
-**What's needed:**
-- Aggregate clicks by referrer domain
-- Show top referrer domains with counts on link stats page
-- Optionally allow drill-down to individual referrer URLs
+### 4. ~~Referrer Grouping~~ ✅ Done
+- Both admin and user stats APIs now return `referrerDomains` field
+- Each entry: `{ domain, count, urls: [{ url, count }] }`
+- Domain extracted from referrer URL with fallback to raw string
 
 ---
 
-### 5. Auto Title Fetching (Medium Priority)
-YOURLS fetches the `<title>` tag from the target URL when creating a link. hmd-bio requires the title to be manually provided (or leaves it empty).
-
-**What's needed:**
-- On link creation (API and UI), if no title is provided, fetch the target URL and extract `<title>`
-- Use a timeout (e.g., 3s) so slow sites don't block link creation
-- Fallback gracefully if fetch fails
+### 5. ~~Auto Title Fetching~~ ✅ Done (pre-existing)
+Already implemented via `fetchPageTitle()` in shorten API (5s timeout, YouTube oEmbed shortcut, generic HTML `<title>` parsing).
 
 ---
 
-### 6. Public Stats Page (Low Priority)
-YOURLS allows viewing per-link stats by appending `+` to the short URL (e.g., `hmd.bio/abc+`). hmd-bio has a preview page (`/preview/[keyword]`) but no public stats view.
-
-**What's needed:**
-- A `/stats/[keyword]` public page showing click count, creation date, and basic chart
-- Proxy/middleware support for the `+` suffix pattern
-- Optionally gate behind a config flag (some users prefer private stats)
+### 6. ~~Public Stats Page~~ ✅ Done
+- `/stats/[keyword]` public page with: link info, total clicks, 30-day bar chart, top countries, top referrers, continue-to-destination button
+- `hmd.bio/abc+` suffix rewrites to `/stats/abc` (proxy updated)
+- Password-protected links return 404 on public stats
 
 ---
 
-### 7. API Output Formats (Low Priority)
-YOURLS supports XML, JSON, JSONP, and plain text output via a `format` query parameter. hmd-bio is JSON-only.
-
-**What's needed:**
-- Accept `?format=json|xml|jsonp|simple` on public API endpoints (`/shorten`, `/expand`, `/stats`)
-- JSONP: wrap response in callback function
-- Simple: return just the short URL as plain text
-- XML: serialize response as XML
+### 7. ~~API Output Formats~~ ✅ Done
+- `?format=json|xml|jsonp|simple` supported on `/shorten`, `/expand`, `/stats`, `/stats/[keyword]`
+- JSONP: `?format=jsonp&callback=myFunc` wraps in callback (validated identifier)
+- Simple: returns just the short URL (shorten) or long URL (expand) as plain text
+- XML: full response serialized with `<?xml?>` header
+- Format helper in `src/lib/format-response.ts`
 
 ---
 
-### 8. Version Endpoint (Low Priority)
-YOURLS has `action=version` returning the installed version and DB version. Useful for monitoring and integrations.
-
-**What's needed:**
-- `GET /api/v1/version` returning `{ version, node, uptime }` or similar
+### 8. ~~Version Endpoint~~ ✅ Done
+- `GET /api/v1/version` → `{ version, node, uptime }`
+- No auth required, `force-dynamic`
 
 ---
 
-### 9. Fuzzy Keyword Suggestions (Low Priority)
-YOURLS plugin suggests similar available keywords when the requested one is taken (e.g., "abc" taken → suggests "abc1", "abc2").
-
-**What's needed:**
-- When keyword validation fails (taken), generate and return 3–5 alternatives
-- Append digits or a random suffix to the base keyword
+### 9. ~~Fuzzy Keyword Suggestions~~ ✅ Done
+- When a custom keyword is taken, 409 response now includes `suggestions` array
+- Suggestions: numeric suffixes (keyword1, keyword2, …), filtered for availability
+- `apiError()` extended to support optional `suggestions` parameter
 
 ---
 
-### 10. Sequential Keyword Option (Low Priority)
-YOURLS supports sequential numeric IDs (base-36 or base-62) as an alternative to random keywords. hmd-bio only generates random keywords.
-
-**What's needed:**
-- Store a `nextId` counter in the Options collection
-- On link creation without a custom keyword, optionally use the next sequential ID
-- Config flag to choose between random and sequential modes
+### 10. ~~Sequential Keyword Option~~ ✅ Done
+- Option `keywordMode` in Options collection: `"random"` (default) or `"sequential"`
+- Option `nextSequentialId` auto-incremented atomically via `findOneAndUpdate`
+- Sequential IDs encoded as base-62 (0-9, a-z, A-Z) for compact keywords
+- `numberToBase62()` utility in `src/lib/utils.ts`
 
 ---
 

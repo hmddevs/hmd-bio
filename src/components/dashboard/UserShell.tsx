@@ -24,6 +24,7 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import LinkIcon from "@mui/icons-material/Link";
 import AddLinkIcon from "@mui/icons-material/AddLink";
 import SettingsIcon from "@mui/icons-material/Settings";
+import BuildIcon from "@mui/icons-material/Build";
 import TouchAppIcon from "@mui/icons-material/TouchApp";
 import LogoutIcon from "@mui/icons-material/Logout";
 
@@ -34,6 +35,7 @@ const navItems = [
   { label: "My Links", href: "/dashboard/links", icon: <LinkIcon /> },
   { label: "Create Link", href: "/dashboard/links/new", icon: <AddLinkIcon /> },
   { label: "Clicks", href: "/dashboard/clicks", icon: <TouchAppIcon /> },
+  { label: "Tools", href: "/dashboard/tools", icon: <BuildIcon /> },
   { label: "Settings", href: "/dashboard/settings", icon: <SettingsIcon /> },
 ];
 

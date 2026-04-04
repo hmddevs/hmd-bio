@@ -5,6 +5,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
 import { authenticateRequest } from "@/lib/auth";
 import { getCachedStats, setCachedStats } from "@/lib/cache";
+import { formatResponse } from "@/lib/format-response";
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,6 +39,12 @@ export async function GET(request: NextRequest) {
     const data = { totalLinks, totalClicks };
 
     setCachedStats(cacheKey, data, 300).catch(() => {});
+
+    const format = request.nextUrl.searchParams.get("format");
+    if (format && format !== "json") {
+      const cb = request.nextUrl.searchParams.get("callback");
+      return formatResponse(data, format, 200, cb);
+    }
 
     return apiSuccess(data);
   } catch (err) {
