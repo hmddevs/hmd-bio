@@ -49,6 +49,12 @@ export default function UserSettingsPage() {
   const [keysLoading, setKeysLoading] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Email change
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [emailMsg, setEmailMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [emailSaving, setEmailSaving] = useState(false);
+
   async function loadKeys() {
     setKeysLoading(true);
     try {
@@ -63,7 +69,7 @@ export default function UserSettingsPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on tab change
-    if (tab === 1) loadKeys();
+    if (tab === 2) loadKeys();
   }, [tab]);
 
   async function handlePasswordChange() {
@@ -129,6 +135,33 @@ export default function UserSettingsPage() {
     }
   }
 
+  async function handleEmailChange() {
+    if (!newEmail.trim() || !emailPassword) {
+      setEmailMsg({ type: "error", text: "All fields are required" });
+      return;
+    }
+    setEmailSaving(true);
+    setEmailMsg(null);
+    try {
+      const res = await fetch("/api/v1/auth/email", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newEmail: newEmail.trim(), currentPassword: emailPassword }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEmailMsg({ type: "success", text: data.data?.message || "Confirmation email sent to your current address." });
+        setNewEmail("");
+        setEmailPassword("");
+      } else {
+        setEmailMsg({ type: "error", text: data.error });
+      }
+    } catch {
+      setEmailMsg({ type: "error", text: "Network error" });
+    }
+    setEmailSaving(false);
+  }
+
   return (
     <Box sx={{ maxWidth: 640 }}>
       <Typography variant="h5" fontWeight={700} mb={3}>
@@ -138,6 +171,7 @@ export default function UserSettingsPage() {
       <Card>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}>
           <Tab label="Change Password" />
+          <Tab label="Change Email" />
           <Tab label="API Keys" />
         </Tabs>
 
@@ -178,6 +212,39 @@ export default function UserSettingsPage() {
           )}
 
           {tab === 1 && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                A confirmation link will be sent to your current email address. Click it to apply the change.
+              </Typography>
+              <TextField
+                label="New Email Address"
+                type="email"
+                fullWidth
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                autoComplete="email"
+              />
+              <TextField
+                label="Current Password"
+                type="password"
+                fullWidth
+                value={emailPassword}
+                onChange={(e) => setEmailPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+              {emailMsg && <Alert severity={emailMsg.type}>{emailMsg.text}</Alert>}
+              <Button
+                variant="contained"
+                onClick={handleEmailChange}
+                disabled={emailSaving}
+                sx={{ alignSelf: "flex-start" }}
+              >
+                {emailSaving ? "Sending…" : "Change Email"}
+              </Button>
+            </Box>
+          )}
+
+          {tab === 2 && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <Typography variant="body2" color="text.secondary">
                 API keys allow external services to create short URLs on your behalf.

@@ -48,6 +48,11 @@ export const changePasswordSchema = z.object({
   newPassword: z.string().min(8).max(200),
 });
 
+export const changeEmailSchema = z.object({
+  newEmail: z.string().email("Invalid email address").max(200),
+  currentPassword: z.string().min(1),
+});
+
 export const bulkImportSchema = z.array(
   z.object({
     url: z.string().url(),
