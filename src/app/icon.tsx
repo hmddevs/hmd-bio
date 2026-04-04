@@ -11,16 +11,34 @@ export default function Icon() {
           width: "100%",
           height: "100%",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#2563eb",
+          backgroundColor: "#0a0a0a",
           borderRadius: 6,
           color: "white",
-          fontSize: 20,
-          fontWeight: 700,
         }}
       >
-        H
+        <div
+          style={{
+            fontSize: 20,
+            fontWeight: 800,
+            letterSpacing: -0.5,
+            display: "flex",
+          }}
+        >
+          H
+        </div>
+        <div
+          style={{
+            width: 14,
+            height: 2,
+            backgroundColor: "#2563eb",
+            borderRadius: 1,
+            marginTop: 1,
+            display: "flex",
+          }}
+        />
       </div>
     ),
     { ...size },
