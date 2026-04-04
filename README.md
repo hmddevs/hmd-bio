@@ -93,7 +93,7 @@ src/
 
 ```bash
 # Clone the repository
-git clone https://github.com/umutguden/hmd-bio.git
+git clone https://github.com/hmddevs/hmd-bio.git
 cd hmd-bio
 
 # Install dependencies
