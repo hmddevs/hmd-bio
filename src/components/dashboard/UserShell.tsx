@@ -56,9 +56,17 @@ export default function UserShell({ children }: { children: React.ReactNode }) {
       <Divider />
       <List sx={{ flex: 1, px: 1.5, pt: 1 }}>
         {navItems.map((item) => {
+          // Exact match, or starts with this href + "/" but only if no other more-specific nav item matches
           const isActive =
             pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            (item.href !== "/dashboard" &&
+              pathname.startsWith(item.href + "/") &&
+              !navItems.some(
+                (other) =>
+                  other.href !== item.href &&
+                  other.href.startsWith(item.href + "/") &&
+                  (pathname === other.href || pathname.startsWith(other.href + "/"))
+              ));
           return (
             <ListItemButton
               key={item.href}
