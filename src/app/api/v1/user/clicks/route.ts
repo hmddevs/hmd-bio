@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Click } from "@/models/Click";
 import { Link } from "@/models/Link";
-import { apiSuccess, apiError } from "@/lib/api-response";
+import { apiSuccess, apiError } from "@/lib/api/api-response";
 import { authenticateRequest } from "@/lib/auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit } from "@/lib/api/rate-limit";
 
 export async function GET(request: NextRequest) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";

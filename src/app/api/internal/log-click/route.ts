@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Click } from "@/models/Click";
 import { Link } from "@/models/Link";
 import { hashIP } from "@/lib/ip";
-import { encrypt } from "@/lib/encryption";
+import { encrypt } from "@/lib/integrations/encryption";
 import { UAParser } from "ua-parser-js";
 
 /**

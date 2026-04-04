@@ -2,10 +2,10 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
-import { apiSuccess, apiError } from "@/lib/api-response";
+import { apiSuccess, apiError } from "@/lib/api/api-response";
 import { authenticateRequest, requireAdmin } from "@/lib/auth";
-import { getCachedStats, setCachedStats } from "@/lib/cache";
-import { formatResponse } from "@/lib/format-response";
+import { getCachedStats, setCachedStats } from "@/lib/integrations/cache";
+import { formatResponse } from "@/lib/api/format-response";
 
 function periodToDate(period: string): Date | null {
   const now = new Date();

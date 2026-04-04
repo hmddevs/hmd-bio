@@ -4,7 +4,7 @@
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
-import { redis } from "@/lib/cache";
+import { redis } from "@/lib/integrations/cache";
 
 // ─── Redis-backed (distributed) ────────────────────────────────
 

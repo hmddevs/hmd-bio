@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
-import { apiSuccess, apiError } from "@/lib/api-response";
-import { rateLimit } from "@/lib/rate-limit";
+import { apiSuccess, apiError } from "@/lib/api/api-response";
+import { rateLimit } from "@/lib/api/rate-limit";
 import { authenticateRequest } from "@/lib/auth";
-import { getCachedStats, setCachedStats } from "@/lib/cache";
-import { formatResponse } from "@/lib/format-response";
+import { getCachedStats, setCachedStats } from "@/lib/integrations/cache";
+import { formatResponse } from "@/lib/api/format-response";
 
 export async function GET(request: NextRequest) {
   try {

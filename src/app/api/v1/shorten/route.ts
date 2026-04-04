@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Option } from "@/models/Option";
 import { shortenSchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api-response";
+import { apiSuccess, apiError } from "@/lib/api/api-response";
 import {
   generateKeyword,
   isReservedKeyword,
@@ -14,9 +14,9 @@ import {
   numberToBase62,
 } from "@/lib/utils";
 import { authenticateRequest } from "@/lib/auth";
-import { rateLimit } from "@/lib/rate-limit";
-import { setCachedLink } from "@/lib/cache";
-import { formatResponse } from "@/lib/format-response";
+import { rateLimit } from "@/lib/api/rate-limit";
+import { setCachedLink } from "@/lib/integrations/cache";
+import { formatResponse } from "@/lib/api/format-response";
 
 export async function POST(request: NextRequest) {
   try {

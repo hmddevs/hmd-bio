@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCachedLink } from "@/lib/cache";
+import { getCachedLink } from "@/lib/integrations/cache";
 
 const BYPASS_PREFIXES = [
   "/admin",

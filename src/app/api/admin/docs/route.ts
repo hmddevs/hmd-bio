@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { openApiPrivateSpec } from "@/lib/openapi";
+import { openApiPrivateSpec } from "@/lib/api/openapi";
 import { authenticateRequest } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {

@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
-import { apiSuccess, apiError } from "@/lib/api-response";
-import { rateLimit } from "@/lib/rate-limit";
-import { sendVerificationEmail } from "@/lib/email";
+import { apiSuccess, apiError } from "@/lib/api/api-response";
+import { rateLimit } from "@/lib/api/rate-limit";
+import { sendVerificationEmail } from "@/lib/integrations/email";
 import { randomBytes } from "crypto";
 
 export async function POST(request: NextRequest) {

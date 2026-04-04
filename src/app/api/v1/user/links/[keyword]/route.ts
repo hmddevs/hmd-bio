@@ -3,10 +3,10 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { editLinkSchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api-response";
+import { apiSuccess, apiError } from "@/lib/api/api-response";
 import { authenticateRequest } from "@/lib/auth";
 import { isReservedKeyword } from "@/lib/utils";
-import { invalidateCachedLink } from "@/lib/cache";
+import { invalidateCachedLink } from "@/lib/integrations/cache";
 import bcrypt from "bcryptjs";
 
 export async function GET(
