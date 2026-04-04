@@ -130,7 +130,8 @@ pnpm lint         # Run ESLint
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key |
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret key |
 | `INTERNAL_SECRET` | Secret for proxy → API internal calls |
-| `IP_HASH_SECRET` | Salt for hashing visitor IPs |
+| `IP_HASH_SALT` | Salt for hashing visitor IPs |
+| `IP_ENCRYPTION_KEY` | 64-char hex key for admin IP decryption |
 
 ### Optional Environment Variables
 
@@ -167,7 +168,7 @@ vercel --prod
 
 ## 📄 License
 
-Proprietary — [HMD Developments](https://hmddevs.org). All rights reserved.
+[MIT](LICENSE) — [HMD Developments](https://hmddevs.org)
 
 ---
 

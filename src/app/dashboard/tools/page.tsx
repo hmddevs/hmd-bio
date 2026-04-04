@@ -66,7 +66,6 @@ export default function UserToolsPage() {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {bm.description}
             </Typography>
-            {/* eslint-disable-next-line */}
             <a
               href={bm.code}
               onClick={(e) => e.preventDefault()}

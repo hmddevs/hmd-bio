@@ -39,6 +39,7 @@ export default function GlobalError({
           >
             Try again
           </button>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- intentional: <Link> may fail when router is in error state */}
           <a
             href="/"
             className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"

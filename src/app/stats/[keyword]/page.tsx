@@ -97,6 +97,7 @@ export default async function StatsPage({ params }: Props) {
   }
 
   // Owner / admin sees full stats
+  /* eslint-disable react-hooks/purity -- server component: Date.now() and DB calls are expected */
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const [timeline, topCountries, topReferrers] = await Promise.all([
     Click.aggregate([
@@ -122,6 +123,7 @@ export default async function StatsPage({ params }: Props) {
       { $limit: 5 },
     ]),
   ]);
+  /* eslint-enable react-hooks/purity */
 
   const stats = {
     keyword: link.keyword,
