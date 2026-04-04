@@ -107,7 +107,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <Divider />
       <List sx={{ px: 1.5, pb: 1 }}>
         <ListItemButton
-          onClick={() => signOut({ callbackUrl: "/admin/login" })}
+          onClick={() => signOut({ callbackUrl: "/login" })}
           sx={{ borderRadius: 2 }}
         >
           <ListItemIcon sx={{ minWidth: 40 }}>
