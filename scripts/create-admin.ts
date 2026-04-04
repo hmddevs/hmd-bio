@@ -36,16 +36,16 @@ const User = mongoose.model("User", UserSchema);
 async function main() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    console.error("❌ MONGODB_URI not set");
+    console.error("Error: MONGODB_URI not set");
     process.exit(1);
   }
 
   await mongoose.connect(uri);
-  console.log("🔌 Connected to MongoDB");
+  console.log("Connected to MongoDB");
 
   const existing = await User.findOne({ username: "heimdall" });
   if (existing) {
-    console.log("ℹ️  Admin user 'heimdall' already exists — resetting password to 'changeme'");
+    console.log("Admin user 'heimdall' already exists — resetting password to 'changeme'");
     existing.passwordHash = await bcrypt.hash("changeme", 10);
     await existing.save();
   } else {
@@ -55,12 +55,12 @@ async function main() {
       role: "admin",
       apiKeys: [],
     });
-    console.log("✅ Admin user created");
+    console.log("Admin user created");
   }
 
   console.log("\n   Username: heimdall");
   console.log("   Password: changeme");
-  console.log("   ⚠️  Change the password immediately after first login!\n");
+  console.log("   Change the password immediately after first login!\n");
 
   await mongoose.disconnect();
 }

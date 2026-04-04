@@ -17,8 +17,8 @@ export default function NotFound() {
           <span className="text-[8rem] font-black leading-none tracking-tighter text-gray-200 dark:text-gray-800 select-none">
             404
           </span>
-          <span className="absolute inset-0 flex items-center justify-center text-4xl">
-            🔗
+          <span className="absolute inset-0 flex items-center justify-center text-3xl font-bold text-gray-400 dark:text-gray-600">
+            ?
           </span>
         </div>
 
