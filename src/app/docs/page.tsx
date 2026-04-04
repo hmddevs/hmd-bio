@@ -18,19 +18,13 @@ const tiers = [
     rate: "100 req/min",
     desc: "Manage links, view analytics & control API keys.",
   },
-  {
-    name: "Admin",
-    auth: "API key (admin)",
-    rate: "100 req/min",
-    desc: "Full platform management — separate documentation.",
-  },
 ];
 
 export default function DocsPage() {
   return (
     <main className="min-h-screen bg-gray-950">
       <div className="max-w-5xl mx-auto px-4 py-8">
-        <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <div className="mb-8 grid gap-4 sm:grid-cols-2">
           {tiers.map((t) => (
             <div
               key={t.name}
