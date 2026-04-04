@@ -78,33 +78,47 @@ export async function proxy(request: NextRequest) {
   const resolveUrl = new URL("/api/internal/resolve", request.url);
   resolveUrl.searchParams.set("keyword", keyword);
 
-  try {
-    const res = await fetch(resolveUrl.toString(), {
-      headers: {
-        "x-forwarded-for": ip,
-        "user-agent": userAgent,
-        referer: referrer,
-        "x-geo-country": countryCode,
-        "x-internal-secret": process.env.INTERNAL_SECRET || "",
-      },
-    });
+  const headers: Record<string, string> = {
+    "x-forwarded-for": ip,
+    "user-agent": userAgent,
+    referer: referrer,
+    "x-geo-country": countryCode,
+    "x-internal-secret": process.env.INTERNAL_SECRET || "",
+  };
 
-    if (!res.ok) {
-      const notFoundUrl = new URL("/not-found", request.url);
-      return NextResponse.rewrite(notFoundUrl);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(resolveUrl.toString(), { headers });
+
+      if (res.status === 404 || res.status === 410) {
+        // Genuinely missing / expired — stop retrying
+        break;
+      }
+
+      if (!res.ok) {
+        // Transient server error — retry once
+        continue;
+      }
+
+      const data = await res.json();
+
+      if (data.isPasswordProtected) {
+        const passwordUrl = new URL(`/password/${keyword}`, request.url);
+        return NextResponse.rewrite(passwordUrl);
+      }
+
+      return NextResponse.redirect(data.url, data.statusCode || 301);
+    } catch {
+      // Network / timeout — retry once
+      continue;
     }
-
-    const data = await res.json();
-
-    if (data.isPasswordProtected) {
-      const passwordUrl = new URL(`/password/${keyword}`, request.url);
-      return NextResponse.rewrite(passwordUrl);
-    }
-
-    return NextResponse.redirect(data.url, data.statusCode || 301);
-  } catch {
-    return NextResponse.next();
   }
+
+  // All attempts exhausted — show not-found
+  const notFoundUrl = new URL("/not-found", request.url);
+  const notFoundRes = NextResponse.rewrite(notFoundUrl);
+  notFoundRes.headers.set("Cache-Control", "private, no-cache, no-store");
+  return notFoundRes;
 }
 
 export const config = {

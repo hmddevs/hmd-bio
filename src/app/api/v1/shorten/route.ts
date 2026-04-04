@@ -98,12 +98,17 @@ export async function POST(request: NextRequest) {
       owner: user ? user.id : null,
     });
 
-    // Pre-warm the Redis cache for immediate fast redirects
-    setCachedLink(link.keyword, {
-      url: link.url,
-      statusCode: link.statusCode || 301,
-      isPasswordProtected: false,
-    }).catch(() => {});
+    // Pre-warm the Redis cache — await so the link is resolvable before
+    // we hand the short URL back to the caller.
+    try {
+      await setCachedLink(link.keyword, {
+        url: link.url,
+        statusCode: link.statusCode || 301,
+        isPasswordProtected: false,
+      });
+    } catch {
+      // Redis unavailable — proxy will fall back to MongoDB resolve
+    }
 
     const base = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
     const shortUrl = `${base}/${link.keyword}`;
