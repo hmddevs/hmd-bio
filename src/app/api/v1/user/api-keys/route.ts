@@ -3,19 +3,13 @@ import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { apiKeySchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { authenticateRequest, requireTurnstile } from "@/lib/auth";
+import { authenticateRequest } from "@/lib/auth";
 import { randomBytes } from "crypto";
 
 export async function GET(request: NextRequest) {
   const user = await authenticateRequest(request);
   if (!user) {
     return apiError("Unauthorized", 401);
-  }
-
-  // User API requires Turnstile (admins exempt)
-  if (user.role !== "admin") {
-    const tsBlock = await requireTurnstile(null, request);
-    if (tsBlock) return tsBlock;
   }
 
   await connectDB();
@@ -39,12 +33,6 @@ export async function POST(request: NextRequest) {
   const user = await authenticateRequest(request);
   if (!user) {
     return apiError("Unauthorized", 401);
-  }
-
-  // User API requires Turnstile (admins exempt)
-  if (user.role !== "admin") {
-    const tsBlock = await requireTurnstile(null, request);
-    if (tsBlock) return tsBlock;
   }
 
   try {
@@ -89,12 +77,6 @@ export async function DELETE(request: NextRequest) {
   const user = await authenticateRequest(request);
   if (!user) {
     return apiError("Unauthorized", 401);
-  }
-
-  // User API requires Turnstile (admins exempt)
-  if (user.role !== "admin") {
-    const tsBlock = await requireTurnstile(null, request);
-    if (tsBlock) return tsBlock;
   }
 
   try {

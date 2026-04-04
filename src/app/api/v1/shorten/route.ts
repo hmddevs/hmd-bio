@@ -10,7 +10,7 @@ import {
   fetchPageTitle,
   verifyTurnstile,
 } from "@/lib/utils";
-import { authenticateRequest, requireTurnstile } from "@/lib/auth";
+import { authenticateRequest } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { setCachedLink } from "@/lib/cache";
 
@@ -27,18 +27,11 @@ export async function POST(request: NextRequest) {
     const { url, keyword: customKeyword, title, turnstileToken } = parsed.data;
 
     // Auth policy:
-    // - Public (no API key): Turnstile required
-    // - User (API key): API key + Turnstile required
-    // - Admin (API key, role=admin): API key only (no Turnstile)
+    // - Authenticated (session or API key): no Turnstile needed
+    // - Public / anonymous: Turnstile required
     const user = await authenticateRequest(request);
 
-    if (user) {
-      // Authenticated user — admins skip Turnstile, regular users need it
-      if (user.role !== "admin") {
-        const tsBlock = await requireTurnstile(turnstileToken);
-        if (tsBlock) return tsBlock;
-      }
-    } else {
+    if (!user) {
       // Public / anonymous — Turnstile required
       const secretKey = process.env.TURNSTILE_SECRET_KEY;
       if (secretKey) {

@@ -27,8 +27,9 @@ async function connectWithRetry(attempt = 1): Promise<typeof mongoose> {
   try {
     return await mongoose.connect(getMongoURI(), {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 3000,
+      socketTimeoutMS: 30000,
+      maxPoolSize: 10,
     });
   } catch (err) {
     if (attempt >= MAX_RETRIES) throw err;
