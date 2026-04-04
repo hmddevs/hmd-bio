@@ -15,9 +15,12 @@ function BookmarkletContent() {
 
   useEffect(() => {
     if (!url) {
-      setError("No URL provided");
-      setStatus("error");
-      return;
+      // Deferred to avoid synchronous setState in effect body
+      const id = requestAnimationFrame(() => {
+        setError("No URL provided");
+        setStatus("error");
+      });
+      return () => cancelAnimationFrame(id);
     }
 
     const body: Record<string, string> = { url };

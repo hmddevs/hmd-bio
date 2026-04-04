@@ -48,7 +48,6 @@
     "@types/ua-parser-js": "^0.7.39",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
-    "mysql2": "^3.20.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

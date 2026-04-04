@@ -10,7 +10,7 @@ function toXml(obj: unknown, root = "response"): string {
   function serialize(value: unknown, tag: string): string {
     if (value === null || value === undefined) return `<${tag}/>`;
     if (Array.isArray(value)) {
-      return value.map((item, i) => serialize(item, `item`)).join("");
+      return value.map((item) => serialize(item, `item`)).join("");
     }
     if (typeof value === "object" && value instanceof Date) {
       return `<${tag}>${escape(value.toISOString())}</${tag}>`;
