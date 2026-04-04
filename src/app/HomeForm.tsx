@@ -290,9 +290,6 @@ export default function HomeForm() {
             <Link href="/cookies" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Cookies</Link>
             <Link href="/aup" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">AUP</Link>
             <Link href="/docs" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">API Docs</Link>
-            {!session && (
-              <Link href="/login" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Sign In</Link>
-            )}
           </nav>
         </div>
       </footer>
