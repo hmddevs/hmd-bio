@@ -9,6 +9,9 @@ export interface IUser extends Document {
   status: "pending" | "approved" | "disabled";
   verificationToken?: string;
   verificationExpires?: Date;
+  pendingEmail?: string;
+  emailChangeToken?: string;
+  emailChangeExpires?: Date;
   apiKeys: { key: string; label: string; createdAt: Date }[];
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +35,9 @@ const UserSchema = new Schema<IUser>(
     status: { type: String, enum: ["pending", "approved", "disabled"], default: "pending" },
     verificationToken: { type: String, default: null },
     verificationExpires: { type: Date, default: null },
+    pendingEmail: { type: String, default: null },
+    emailChangeToken: { type: String, default: null },
+    emailChangeExpires: { type: Date, default: null },
     apiKeys: { type: [ApiKeySchema], default: [] },
   },
   {

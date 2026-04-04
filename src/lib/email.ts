@@ -110,3 +110,29 @@ export async function sendAdminApprovalRequest(
     `,
   });
 }
+
+export async function sendEmailChangeConfirmation(
+  to: string,
+  newEmail: string,
+  token: string
+): Promise<boolean> {
+  const base = (process.env.AUTH_URL || "https://hmd.bio")
+    .trim()
+    .replace(/\/+$/, "");
+  const confirmUrl = `${base}/api/v1/auth/email/confirm?token=${token}`;
+
+  return sendEmail({
+    to,
+    subject: "Confirm your email change on HMD.bio",
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+        <h2 style="color: #fff; margin-bottom: 8px;">HMD<span style="color: #6366f1;">.bio</span></h2>
+        <p style="color: #a1a1aa; margin-bottom: 24px;">A request was made to change your email address to <strong>${newEmail}</strong>.</p>
+        <p style="color: #a1a1aa; margin-bottom: 24px;">Click below to confirm this change:</p>
+        <a href="${confirmUrl}" style="display: inline-block; padding: 12px 24px; background: #6366f1; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 600;">Confirm Email Change</a>
+        <p style="color: #71717a; font-size: 13px; margin-top: 24px;">If the button doesn't work, copy this link:<br/>${confirmUrl}</p>
+        <p style="color: #71717a; font-size: 12px; margin-top: 32px;">This link expires in 1 hour. If you didn't request this change, you can safely ignore this email.</p>
+      </div>
+    `,
+  });
+}
