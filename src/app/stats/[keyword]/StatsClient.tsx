@@ -25,7 +25,7 @@ export default function StatsClient({ stats }: { stats: StatsData }) {
             Link Statistics
           </h1>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            Public stats for{" "}
+            Stats for{" "}
             <span className="font-semibold text-blue-600 dark:text-blue-400">
               {stats.shortUrl}
             </span>
