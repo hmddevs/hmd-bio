@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
 import MuiProvider from "@/components/providers/MuiProvider";
-import AdminShell from "@/components/admin/AdminShell";
+import AdminShell from "@/components/shells/AdminShell";
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
