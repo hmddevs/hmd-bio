@@ -4,6 +4,7 @@ import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
 import { authenticateRequest } from "@/lib/auth";
+import { formatResponse } from "@/lib/format-response";
 
 export async function GET(request: NextRequest) {
   const user = await authenticateRequest(request);
@@ -29,10 +30,18 @@ export async function GET(request: NextRequest) {
     return apiError("Short URL not found", 404);
   }
 
-  return apiSuccess({
+  const data = {
     keyword: link.keyword,
     url: link.url,
     title: link.title,
     createdAt: link.createdAt,
-  });
+  };
+
+  const format = request.nextUrl.searchParams.get("format");
+  if (format && format !== "json") {
+    const cb = request.nextUrl.searchParams.get("callback");
+    return formatResponse(data as unknown as Record<string, unknown>, format, 200, cb, "url");
+  }
+
+  return apiSuccess(data);
 }

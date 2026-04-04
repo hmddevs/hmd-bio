@@ -4,6 +4,7 @@ import { getCachedLink } from "@/lib/cache";
 const BYPASS_PREFIXES = [
   "/admin",
   "/api",
+  "/bookmarklet",
   "/dashboard",
   "/docs",
   "/login",
@@ -11,6 +12,7 @@ const BYPASS_PREFIXES = [
   "/preview",
   "/password",
   "/not-found",
+  "/stats",
   "/terms",
   "/privacy",
   "/cookies",
@@ -36,10 +38,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Preview pages don't need resolution — rewrite directly (no click logged)
+  // Stats pages (keyword+) — rewrite directly (no click logged)
   if (isPreview) {
-    const previewUrl = new URL(`/preview/${keyword}`, request.url);
-    return NextResponse.rewrite(previewUrl);
+    const statsUrl = new URL(`/stats/${keyword}`, request.url);
+    return NextResponse.rewrite(statsUrl);
   }
 
   // Collect request metadata for click logging
@@ -128,6 +130,6 @@ export const config = {
      * Excludes: /_next, /api, /admin, /dashboard, /docs, /login, /signup,
      * /preview, /password, /not-found, /(legal pages), static files.
      */
-    "/((?!_next|api|admin|dashboard|docs|login|signup|preview|password|not-found|terms|privacy|cookies|aup|assets|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|icon|apple-icon|opengraph-image).*)",
+    "/((?!_next|api|admin|bookmarklet|dashboard|docs|login|signup|preview|password|not-found|stats|terms|privacy|cookies|aup|assets|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|icon|apple-icon|opengraph-image).*)",
   ],
 };

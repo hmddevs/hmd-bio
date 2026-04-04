@@ -7,9 +7,35 @@ export function generateKeyword(length = 5): string {
   return generate(length);
 }
 
+export function numberToBase62(n: number): string {
+  if (n === 0) return CHARSET[0];
+  let result = "";
+  while (n > 0) {
+    result = CHARSET[n % 62] + result;
+    n = Math.floor(n / 62);
+  }
+  return result;
+}
+
+export function generateKeywordSuggestions(base: string, count = 5): string[] {
+  const suggestions: string[] = [];
+  for (let i = 1; suggestions.length < count; i++) {
+    const candidate = `${base}${i}`;
+    if (candidate.length >= 2 && candidate.length <= 100) {
+      suggestions.push(candidate);
+    }
+  }
+  // Also add random suffix variants
+  while (suggestions.length < count) {
+    suggestions.push(`${base}-${generate(3)}`);
+  }
+  return suggestions;
+}
+
 const RESERVED_KEYWORDS = new Set([
   "admin",
   "api",
+  "bookmarklet",
   "login",
   "logout",
   "assets",
@@ -17,6 +43,7 @@ const RESERVED_KEYWORDS = new Set([
   "password",
   "not-found",
   "docs",
+  "stats",
   "terms",
   "privacy",
   "cookies",

@@ -98,6 +98,20 @@ export async function GET(
     const referredCount = totalInPeriod - directCount;
     const directPercent = totalInPeriod > 0 ? Math.round((directCount / totalInPeriod) * 100) : 0;
 
+    // Referrer domain grouping
+    const domainMap: Record<string, { count: number; urls: { url: string; count: number }[] }> = {};
+    for (const r of referrers) {
+      if (!r._id) continue;
+      let domain: string;
+      try { domain = new URL(r._id).hostname; } catch { domain = r._id; }
+      if (!domainMap[domain]) domainMap[domain] = { count: 0, urls: [] };
+      domainMap[domain].count += r.count;
+      domainMap[domain].urls.push({ url: r._id, count: r.count });
+    }
+    const referrerDomains = Object.entries(domainMap)
+      .map(([domain, d]) => ({ domain, count: d.count, urls: d.urls }))
+      .sort((a, b) => b.count - a.count);
+
     const data = {
       keyword: link.keyword,
       url: link.url,
@@ -123,6 +137,7 @@ export async function GET(
       timeline: timeline.map((t: { _id: string; count: number }) => ({ date: t._id, count: t.count })),
       browsers: browsers.map((b: { _id: string | null; count: number }) => ({ name: b._id || "Unknown", count: b.count })),
       operatingSystems: operatingSystems.map((o: { _id: string | null; count: number }) => ({ name: o._id || "Unknown", count: o.count })),
+      referrerDomains,
     };
 
     setCachedStats(cacheKey, data, 300).catch(() => {});
