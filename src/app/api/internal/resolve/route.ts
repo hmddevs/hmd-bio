@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
   const linkData: CachedLink = {
     url: link.url,
-    statusCode: link.statusCode || 301,
+    statusCode: link.statusCode || 302,
     isPasswordProtected: !!link.isPasswordProtected,
   };
 

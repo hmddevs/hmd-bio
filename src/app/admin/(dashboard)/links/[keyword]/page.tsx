@@ -122,7 +122,7 @@ export default function LinkDetailPage() {
   const [form, setForm] = useState({
     url: "",
     title: "",
-    statusCode: 301,
+    statusCode: 302,
     newPassword: "",
     removePassword: false,
     expiresAt: "",
