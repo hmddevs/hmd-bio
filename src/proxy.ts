@@ -88,12 +88,15 @@ export async function proxy(request: NextRequest) {
     "x-internal-secret": process.env.INTERNAL_SECRET || "",
   };
 
+  let genuineNotFound = false;
+
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(resolveUrl.toString(), { headers });
 
       if (res.status === 404 || res.status === 410) {
         // Genuinely missing / expired — stop retrying
+        genuineNotFound = true;
         break;
       }
 
@@ -116,11 +119,17 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // All attempts exhausted — show not-found
-  const notFoundUrl = new URL("/not-found", request.url);
-  const notFoundRes = NextResponse.rewrite(notFoundUrl);
-  notFoundRes.headers.set("Cache-Control", "private, no-cache, no-store");
-  return notFoundRes;
+  if (genuineNotFound) {
+    // Link confirmed missing / expired — show not-found
+    const notFoundUrl = new URL("/not-found", request.url);
+    const notFoundRes = NextResponse.rewrite(notFoundUrl);
+    notFoundRes.headers.set("Cache-Control", "private, no-cache, no-store");
+    return notFoundRes;
+  }
+
+  // Resolve API unreachable (cold start, timeout, etc.) — fall through to
+  // the server-side [keyword] catch-all page which connects to MongoDB directly
+  return NextResponse.next();
 }
 
 export const config = {
