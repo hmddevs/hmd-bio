@@ -70,7 +70,7 @@ export async function proxy(request: NextRequest) {
         body: JSON.stringify({ keyword, ip, userAgent, referrer, countryCode }),
       }).catch(() => {});
 
-      return NextResponse.redirect(cached.url, cached.statusCode || 301);
+      return NextResponse.redirect(cached.url, cached.statusCode || 302);
     }
   } catch {
     // Redis unavailable — fall through to internal API
@@ -109,7 +109,7 @@ export async function proxy(request: NextRequest) {
         return NextResponse.rewrite(passwordUrl);
       }
 
-      return NextResponse.redirect(data.url, data.statusCode || 301);
+      return NextResponse.redirect(data.url, data.statusCode || 302);
     } catch {
       // Network / timeout — retry once
       continue;

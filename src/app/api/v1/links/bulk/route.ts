@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         title: item.title || "",
         ip: "",
         clicks: 0,
-        statusCode: 301,
+        statusCode: 302,
         createdVia: "bulk",
         owner: user.id,
       });

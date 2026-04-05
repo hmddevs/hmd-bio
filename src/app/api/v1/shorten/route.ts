@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       title: linkTitle,
       ip,
       clicks: 0,
-      statusCode: 301,
+      statusCode: 302,
       createdVia,
       owner: user ? user.id : null,
     });
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     try {
       await setCachedLink(link.keyword, {
         url: link.url,
-        statusCode: link.statusCode || 301,
+        statusCode: link.statusCode || 302,
         isPasswordProtected: false,
       });
     } catch {

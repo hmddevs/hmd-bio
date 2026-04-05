@@ -33,7 +33,7 @@ const LinkSchema = new Schema<ILink>(
     title: { type: String, default: "" },
     ip: { type: String, default: "" },
     clicks: { type: Number, default: 0, min: 0 },
-    statusCode: { type: Number, enum: [301, 302], default: 301 },
+    statusCode: { type: Number, enum: [301, 302], default: 302 },
     isPasswordProtected: { type: Boolean, default: false },
     password: { type: String, select: false },
     expiresAt: { type: Date, default: null },
