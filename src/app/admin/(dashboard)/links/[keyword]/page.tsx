@@ -130,6 +130,7 @@ export default function LinkDetailPage() {
     ogDescription: "",
     ogImage: "",
   });
+  const [saveError, setSaveError] = useState("");
   const [qrSvg, setQrSvg] = useState("");
 
   const baseUrl = typeof window !== "undefined"
@@ -198,10 +199,11 @@ export default function LinkDetailPage() {
 
   async function handleSave() {
     setSaving(true);
+    setSaveError("");
     const body: Record<string, unknown> = {
       url: form.url,
       title: form.title,
-      statusCode: form.statusCode,
+      statusCode: String(form.statusCode),
       ogTitle: form.ogTitle || undefined,
       ogDescription: form.ogDescription || undefined,
       ogImage: form.ogImage || undefined,
@@ -210,17 +212,24 @@ export default function LinkDetailPage() {
     if (form.removePassword) body.removePassword = true;
     if (form.expiresAt) body.expiresAt = new Date(form.expiresAt).toISOString();
 
-    const res = await fetch(`/api/v1/links/${keyword}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setLink(data.data);
-      setEditOpen(false);
+    try {
+      const res = await fetch(`/api/v1/links/${keyword}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLink(data.data);
+        setEditOpen(false);
+      } else {
+        setSaveError(data.error || "Failed to save changes");
+      }
+    } catch {
+      setSaveError("Network error");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function handleGenerateQr() {
@@ -733,10 +742,11 @@ export default function LinkDetailPage() {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={editOpen} onClose={() => { setEditOpen(false); setSaveError(""); }} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Link</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+            {saveError && <Alert severity="error">{saveError}</Alert>}
             <TextField
               label="Destination URL"
               type="url"
