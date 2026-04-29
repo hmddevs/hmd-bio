@@ -8,7 +8,12 @@ export default function ThemeProvider({
   children: React.ReactNode;
 }) {
   return (
-    <NextThemesProvider attribute="data-theme" defaultTheme="dark" forcedTheme="dark">
+    <NextThemesProvider
+      attribute="data-theme"
+      defaultTheme="dark"
+      forcedTheme="dark"
+      enableColorScheme={false}
+    >
       {children}
     </NextThemesProvider>
   );
