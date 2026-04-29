@@ -21,7 +21,7 @@ export const editLinkSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/)
     .max(100)
     .optional(),
-  statusCode: z.enum(["301", "302"]).optional(),
+  statusCode: z.coerce.string().pipe(z.enum(["301", "302"])).optional(),
   isPasswordProtected: z.boolean().optional(),
   password: z.string().min(1).max(200).optional(),
   removePassword: z.boolean().optional(),
