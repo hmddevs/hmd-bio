@@ -2,17 +2,21 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { bulkImportSchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { authenticateRequest, requireAdmin } from "@/lib/auth";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { requireAuth } from "@/lib/api-auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/errors";
 import { generateKeyword, isReservedKeyword, isAllowedProtocol } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
-  const user = await authenticateRequest(request);
-  if (!user) {
-    return apiError("Unauthorized", 401);
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+
+  const rl = await rateLimit(`links-bulk:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) {
+    return apiError("Too many requests", 429);
   }
-  const forbidden = requireAdmin(user);
-  if (forbidden) return forbidden;
 
   try {
     const body = await request.json();
@@ -50,11 +54,10 @@ export async function POST(request: NextRequest) {
         keyword,
         url: item.url,
         title: item.title || "",
-        ip: "",
+        owner: session.user.id,
         clicks: 0,
-        statusCode: 302,
+        statusCode: 301,
         createdVia: "bulk",
-        owner: user.id,
       });
 
       results.push({ keyword, url: item.url, status: "created" });
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ results, summary: { created, skipped, total: results.length } }, 201);
   } catch (err) {
-    console.error("Bulk import error:", err);
+    captureError(err, { route: "api/v1/links/bulk" });
     return apiError("Internal server error", 500);
   }
 }

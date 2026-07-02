@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
-import { apiError } from "@/lib/api/api-response";
-import { sendAdminApprovalRequest } from "@/lib/integrations/email";
+import { apiError } from "@/lib/api-response";
+import { captureError } from "@/lib/errors";
+import { sendAdminApprovalRequest } from "@/lib/email";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
@@ -28,8 +29,9 @@ export async function GET(request: NextRequest) {
     await user.save();
 
     // Notify admin about new account pending approval (non-blocking)
-    sendAdminApprovalRequest(user.username, user.email).catch((err) =>
-      console.error("Failed to notify admin:", err)
+    sendAdminApprovalRequest(user.username, user.email).catch(
+      (notifyErr: unknown) =>
+        captureError(notifyErr, { route: "auth/verify", stage: "admin-notify" })
     );
 
     // Redirect to login with success message
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
       .replace(/\/+$/, "");
     return Response.redirect(`${base}/login?verified=1&pending=1`, 302);
   } catch (err) {
-    console.error("Verify error:", err);
+    captureError(err, { route: "auth/verify" });
     return apiError("Internal server error", 500);
   }
 }

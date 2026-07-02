@@ -3,30 +3,36 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { editLinkSchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { authenticateRequest, requireAdmin } from "@/lib/auth";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { requireAuth, requireOwnership } from "@/lib/api-auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/errors";
 import { isReservedKeyword } from "@/lib/utils";
 import bcrypt from "bcryptjs";
-import { invalidateCachedLink } from "@/lib/integrations/cache";
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
-  const user = await authenticateRequest(request);
-  if (!user) {
-    return apiError("Unauthorized", 401);
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+
+  const rl = await rateLimit(`links-keyword:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) {
+    return apiError("Too many requests", 429);
   }
-  const forbidden = requireAdmin(user);
-  if (forbidden) return forbidden;
 
   const { keyword } = await params;
   await connectDB();
 
-  const link = await Link.findOne({ keyword }).lean();
+  const link = await Link.findOne({ keyword }).select("-password -ipRaw -ipIv").lean();
   if (!link) {
     return apiError("Link not found", 404);
   }
+
+  const forbidden = requireOwnership(link, session);
+  if (forbidden) return forbidden;
 
   return apiSuccess(link);
 }
@@ -35,12 +41,14 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
-  const user = await authenticateRequest(request);
-  if (!user) {
-    return apiError("Unauthorized", 401);
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+
+  const rl = await rateLimit(`links-keyword:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) {
+    return apiError("Too many requests", 429);
   }
-  const forbidden = requireAdmin(user);
-  if (forbidden) return forbidden;
 
   try {
     const { keyword } = await params;
@@ -56,6 +64,9 @@ export async function PUT(
     if (!existing) {
       return apiError("Link not found", 404);
     }
+
+    const forbidden = requireOwnership(existing, session);
+    if (forbidden) return forbidden;
 
     const updates: Record<string, unknown> = {};
 
@@ -97,45 +108,44 @@ export async function PUT(
     }
 
     const updated = await Link.findOneAndUpdate({ keyword }, { $set: updates }, { new: true })
-      .select("-password")
+      .select("-password -ipRaw -ipIv")
       .lean();
-
-    // Invalidate cache for old and new keyword
-    invalidateCachedLink(keyword).catch(() => {});
-    if (updates.keyword && updates.keyword !== keyword) {
-      invalidateCachedLink(updates.keyword as string).catch(() => {});
-    }
 
     return apiSuccess(updated);
   } catch (err) {
-    console.error("Edit link error:", err);
+    captureError(err, { route: "links/[keyword]", method: "PUT" });
     return apiError("Internal server error", 500);
   }
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
-  const user = await authenticateRequest(request);
-  if (!user) {
-    return apiError("Unauthorized", 401);
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+
+  const rl = await rateLimit(`links-keyword:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) {
+    return apiError("Too many requests", 429);
   }
-  const forbidden = requireAdmin(user);
-  if (forbidden) return forbidden;
 
   const { keyword } = await params;
   await connectDB();
 
-  const link = await Link.findOneAndDelete({ keyword });
-  if (!link) {
+  const existing = await Link.findOne({ keyword });
+  if (!existing) {
     return apiError("Link not found", 404);
   }
 
+  const forbidden = requireOwnership(existing, session);
+  if (forbidden) return forbidden;
+
+  await Link.deleteOne({ keyword });
+
   // Also remove click logs
   await Click.deleteMany({ keyword });
-
-  invalidateCachedLink(keyword).catch(() => {});
 
   return apiSuccess({ deleted: keyword });
 }

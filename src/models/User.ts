@@ -1,4 +1,12 @@
-import mongoose, { Schema, Document, Model } from "mongoose";
+import mongoose, { Schema, Document, Model, Types } from "mongoose";
+
+export interface IApiKey {
+  _id: Types.ObjectId;
+  keyHash: string;
+  prefix: string;
+  label: string;
+  createdAt: Date;
+}
 
 export interface IUser extends Document {
   username: string;
@@ -12,14 +20,17 @@ export interface IUser extends Document {
   pendingEmail?: string;
   emailChangeToken?: string;
   emailChangeExpires?: Date;
-  apiKeys: { key: string; label: string; createdAt: Date }[];
+  apiKeys: IApiKey[];
   createdAt: Date;
   updatedAt: Date;
 }
 
 const ApiKeySchema = new Schema(
   {
-    key: { type: String, required: true },
+    // SHA-256 hash of the raw key; the raw key is shown to the user once, at creation, and never stored.
+    keyHash: { type: String, required: true },
+    // First 8 characters of the raw key, kept in plaintext so the UI can show a recognisable identifier.
+    prefix: { type: String, required: true },
     label: { type: String, default: "Default" },
     createdAt: { type: Date, default: Date.now },
   }

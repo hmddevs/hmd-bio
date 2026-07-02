@@ -2,9 +2,12 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { apiKeySchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
+import { apiSuccess, apiError } from "@/lib/api-response";
 import { auth } from "@/lib/auth";
+import { hashApiKey } from "@/lib/api-keys";
+import { captureError } from "@/lib/errors";
 import { randomBytes } from "crypto";
+import mongoose from "mongoose";
 
 export async function GET() {
   const session = await auth();
@@ -18,12 +21,11 @@ export async function GET() {
     return apiError("User not found", 404);
   }
 
-  // Return keys with masked values
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const keys = user.apiKeys.map((k: any) => ({
+  // Only the plaintext prefix is available post-creation; the full key is never persisted.
+  const keys = user.apiKeys.map((k) => ({
     _id: k._id,
     label: k.label,
-    key: k.key.slice(0, 8) + "..." + k.key.slice(-4),
+    key: k.prefix + "...",
     createdAt: k.createdAt,
   }));
 
@@ -46,13 +48,16 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const apiKey = `hmd_${randomBytes(32).toString("hex")}`;
+    const keyHash = hashApiKey(apiKey);
+    const prefix = apiKey.slice(0, 8);
 
     await User.updateOne(
       { username: session.user.name },
       {
         $push: {
           apiKeys: {
-            key: apiKey,
+            keyHash,
+            prefix,
             label: parsed.data.label,
             createdAt: new Date(),
           },
@@ -60,9 +65,10 @@ export async function POST(request: NextRequest) {
       }
     );
 
+    // The raw key is returned exactly once, here, and is never persisted or logged again.
     return apiSuccess({ key: apiKey, label: parsed.data.label }, 201);
   } catch (err) {
-    console.error("Create API key error:", err);
+    captureError(err, { route: "auth/api-keys", method: "POST" });
     return apiError("Internal server error", 500);
   }
 }
@@ -75,8 +81,8 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const { id } = await request.json();
-    if (!id) {
-      return apiError("API key id required", 400);
+    if (typeof id !== "string" || !mongoose.Types.ObjectId.isValid(id)) {
+      return apiError("Valid API key id required", 400);
     }
 
     await connectDB();
@@ -88,7 +94,7 @@ export async function DELETE(request: NextRequest) {
 
     return apiSuccess({ message: "API key deleted" });
   } catch (err) {
-    console.error("Delete API key error:", err);
+    captureError(err, { route: "auth/api-keys", method: "DELETE" });
     return apiError("Internal server error", 500);
   }
 }

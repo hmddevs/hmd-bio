@@ -25,12 +25,7 @@ export default function PrivacyPage() {
 
       <h3>When someone clicks a short link:</h3>
       <ul>
-        <li>IP address — stored in two forms:
-          <ul>
-            <li>A one-way cryptographic hash (for anonymous analytics grouping; visible to link owners as a &quot;Visitor ID&quot;)</li>
-            <li>An encrypted form accessible only to administrators (for security, abuse prevention, and law enforcement requests)</li>
-          </ul>
-        </li>
+        <li>IP address (used to determine country; not stored long-term in identifiable form)</li>
         <li>Referrer URL</li>
         <li>Browser and operating system (derived from User-Agent)</li>
         <li>Country code (derived from IP geolocation)</li>
@@ -47,8 +42,7 @@ export default function PrivacyPage() {
       <p>We use collected information to:</p>
       <ul>
         <li>Provide and operate the URL shortening service</li>
-        <li>Generate click analytics for link owners (using anonymized Visitor IDs derived from hashed IP addresses)</li>
-        <li>Enable administrators to investigate security incidents, abuse, and fraud using encrypted IP data</li>
+        <li>Generate anonymous click analytics for link owners</li>
         <li>Prevent abuse, spam, and malicious activity</li>
         <li>Improve the Service</li>
       </ul>
@@ -64,10 +58,7 @@ export default function PrivacyPage() {
 
       <h2>5. Data Retention</h2>
       <p>
-        Click analytics data (including hashed and encrypted IP addresses) is retained for the lifetime of the associated link. When a link is deleted, its associated click data is also removed. Expired links are automatically removed by the system.
-      </p>
-      <p>
-        Encrypted IP addresses are retained indefinitely for security and abuse prevention purposes. Hashed IP addresses (Visitor IDs) cannot be reversed to identify individuals.
+        Click analytics data is retained for the lifetime of the associated link. When a link is deleted, its associated click data is also removed. Expired links are automatically removed by the system.
       </p>
 
       <h2>6. Your Rights</h2>

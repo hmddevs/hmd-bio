@@ -16,10 +16,10 @@ export default function PasswordPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/internal/verify-password", {
+      const res = await fetch(`/api/v1/links/${keyword}/unlock`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword, password }),
+        body: JSON.stringify({ password }),
       });
 
       const data = await res.json();

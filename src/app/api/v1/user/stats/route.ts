@@ -1,108 +1,96 @@
-import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { authenticateRequest } from "@/lib/auth";
-import { getCachedStats, setCachedStats } from "@/lib/integrations/cache";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { captureError } from "@/lib/errors";
+import { requireAuth } from "@/lib/api-auth";
 
-export async function GET(request: NextRequest) {
-  const user = await authenticateRequest(request);
-  if (!user) return apiError("Unauthorized", 401);
+const TOP_LINKS_LIMIT = 5;
+const TOP_COUNTRIES_LIMIT = 5;
+const TREND_DAYS = 7;
 
-  // Try cache first (2 min TTL per user)
-  const cacheKey = `user:${user.id}`;
-  const cached = await getCachedStats(cacheKey);
-  if (cached) {
-    return apiSuccess(cached);
-  }
+function dayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
-  await connectDB();
+export async function GET() {
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
 
-  const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  try {
+    await connectDB();
 
-  // Get user's link keywords first
-  const userLinks = await Link.find({ owner: user.id }, { keyword: 1 }).lean();
-  const keywords = userLinks.map((l) => l.keyword);
+    const links = await Link.find({ owner: session.user.id })
+      .select("keyword url title clicks")
+      .lean();
 
-  if (keywords.length === 0) {
+    const totalLinks = links.length;
+    const totalClicks = links.reduce((sum, link) => sum + link.clicks, 0);
+    const avgClicks = totalLinks > 0 ? Math.round(totalClicks / totalLinks) : 0;
+
+    const topLinks = [...links]
+      .sort((a, b) => b.clicks - a.clicks)
+      .slice(0, TOP_LINKS_LIMIT)
+      .map((link) => ({
+        keyword: link.keyword,
+        url: link.url,
+        title: link.title,
+        clicks: link.clicks,
+      }));
+
+    const keywords = links.map((link) => link.keyword);
+
+    let clicks24h = 0;
+    let weeklyTrend: { date: string; count: number }[] = [];
+    let topCountries: { code: string; count: number }[] = [];
+
+    if (keywords.length > 0) {
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const sinceTrend = new Date(Date.now() - (TREND_DAYS - 1) * 24 * 60 * 60 * 1000);
+
+      const [clicks24hCount, trendAgg, countriesAgg] = await Promise.all([
+        Click.countDocuments({ keyword: { $in: keywords }, createdAt: { $gte: since24h } }),
+        Click.aggregate([
+          { $match: { keyword: { $in: keywords }, createdAt: { $gte: sinceTrend } } },
+          {
+            $group: {
+              _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        Click.aggregate([
+          { $match: { keyword: { $in: keywords }, countryCode: { $ne: "" } } },
+          { $group: { _id: "$countryCode", count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: TOP_COUNTRIES_LIMIT },
+        ]),
+      ]);
+
+      clicks24h = clicks24hCount;
+
+      const trendByDay = new Map(trendAgg.map((t) => [t._id as string, t.count as number]));
+      weeklyTrend = Array.from({ length: TREND_DAYS }, (_, i) => {
+        const date = new Date(sinceTrend.getTime() + i * 24 * 60 * 60 * 1000);
+        const key = dayKey(date);
+        return { date: key, count: trendByDay.get(key) ?? 0 };
+      });
+
+      topCountries = countriesAgg.map((c) => ({ code: c._id as string, count: c.count as number }));
+    }
+
     return apiSuccess({
-      totalLinks: 0,
-      totalClicks: 0,
-      avgClicks: 0,
-      clicks24h: 0,
-      weeklyTrend: [],
-      topLinks: [],
-      topCountries: [],
+      totalLinks,
+      totalClicks,
+      avgClicks,
+      clicks24h,
+      weeklyTrend,
+      topLinks,
+      topCountries,
     });
+  } catch (err) {
+    captureError(err, { route: "GET /api/v1/user/stats" });
+    return apiError("Internal server error", 500);
   }
-
-  const [
-    totalLinks,
-    totalClicksAgg,
-    weeklyTrend,
-    topLinks,
-    topCountries,
-    clicks24hAgg,
-  ] = await Promise.all([
-    Link.countDocuments({ owner: user.id }),
-    Click.aggregate([
-      { $match: { keyword: { $in: keywords } } },
-      { $group: { _id: null, total: { $sum: 1 } } },
-    ]),
-    Click.aggregate([
-      { $match: { keyword: { $in: keywords }, createdAt: { $gte: sevenDaysAgo } } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-    ]),
-    Link.find({ owner: user.id })
-      .sort({ clicks: -1 })
-      .limit(5)
-      .lean(),
-    Click.aggregate([
-      { $match: { keyword: { $in: keywords }, countryCode: { $ne: "" } } },
-      { $group: { _id: "$countryCode", count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 },
-    ]),
-    Click.aggregate([
-      { $match: { keyword: { $in: keywords }, createdAt: { $gte: twentyFourHoursAgo } } },
-      { $group: { _id: null, total: { $sum: 1 } } },
-    ]),
-  ]);
-
-  const totalClicks = totalClicksAgg[0]?.total ?? 0;
-  const clicks24h = clicks24hAgg[0]?.total ?? 0;
-
-  const data = {
-    totalLinks,
-    totalClicks,
-    avgClicks: totalLinks > 0 ? Math.round((totalClicks / totalLinks) * 10) / 10 : 0,
-    clicks24h,
-    weeklyTrend: weeklyTrend.map((d: { _id: string; count: number }) => ({
-      date: d._id,
-      count: d.count,
-    })),
-    topLinks: topLinks.map((l) => ({
-      keyword: l.keyword,
-      url: l.url,
-      title: l.title,
-      clicks: l.clicks,
-    })),
-    topCountries: topCountries.map((c: { _id: string; count: number }) => ({
-      code: c._id,
-      count: c.count,
-    })),
-  };
-
-  setCachedStats(cacheKey, data, 300).catch(() => {});
-
-  return apiSuccess(data);
 }

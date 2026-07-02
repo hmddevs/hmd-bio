@@ -2,14 +2,20 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { changePasswordSchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { auth } from "@/lib/auth";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { requireAuth } from "@/lib/api-auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/errors";
 import bcrypt from "bcryptjs";
 
 export async function PUT(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return apiError("Unauthorized", 401);
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+
+  const rl = await rateLimit(`change-password:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) {
+    return apiError("Too many requests", 429);
   }
 
   try {
@@ -36,7 +42,7 @@ export async function PUT(request: NextRequest) {
 
     return apiSuccess({ message: "Password changed successfully" });
   } catch (err) {
-    console.error("Change password error:", err);
+    captureError(err, { route: "v1/auth/password" });
     return apiError("Internal server error", 500);
   }
 }

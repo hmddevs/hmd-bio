@@ -91,8 +91,8 @@ export default function AdminUsersPage() {
         setUsers(json.data.users);
         setTotal(json.data.pagination.total);
       }
-    } catch (err) {
-      console.error("Fetch users error:", err);
+    } catch {
+      // Silently ignore — matches the pattern used by sibling admin pages (e.g. links/page.tsx).
     } finally {
       setLoading(false);
     }
@@ -128,8 +128,8 @@ export default function AdminUsersPage() {
         fetchUsers();
         fetchPendingCount();
       }
-    } catch (err) {
-      console.error("User action error:", err);
+    } catch {
+      // Silently ignore — matches the pattern used by sibling admin pages (e.g. links/page.tsx).
     }
   };
 
@@ -189,8 +189,8 @@ export default function AdminUsersPage() {
         fetchUsers();
         fetchPendingCount();
       }
-    } catch (err) {
-      console.error("Delete user error:", err);
+    } catch {
+      // Silently ignore — matches the pattern used by sibling admin pages (e.g. links/page.tsx).
     } finally {
       setDeleteLoading(false);
     }

@@ -4,9 +4,10 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { changeEmailSchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
+import { apiSuccess, apiError } from "@/lib/api-response";
 import { auth } from "@/lib/auth";
-import { sendEmailChangeConfirmation } from "@/lib/integrations/email";
+import { captureError } from "@/lib/errors";
+import { sendEmailChangeConfirmation } from "@/lib/email";
 
 export async function PUT(request: NextRequest) {
   const session = await auth();
@@ -69,7 +70,7 @@ export async function PUT(request: NextRequest) {
       message: "A confirmation email has been sent to your current email address.",
     });
   } catch (err) {
-    console.error("Change email error:", err);
+    captureError(err, { route: "auth/email" });
     return apiError("Internal server error", 500);
   }
 }

@@ -53,17 +53,19 @@ export const changeEmailSchema = z.object({
   currentPassword: z.string().min(1),
 });
 
-export const bulkImportSchema = z.array(
-  z.object({
-    url: z.string().url(),
-    keyword: z
-      .string()
-      .regex(/^[a-zA-Z0-9_-]*$/)
-      .max(100)
-      .optional(),
-    title: z.string().max(500).optional(),
-  })
-);
+export const bulkImportSchema = z
+  .array(
+    z.object({
+      url: z.string().url(),
+      keyword: z
+        .string()
+        .regex(/^[a-zA-Z0-9_-]*$/)
+        .max(100)
+        .optional(),
+      title: z.string().max(500).optional(),
+    })
+  )
+  .max(500, "A bulk import can contain at most 500 links");
 
 export const apiKeySchema = z.object({
   label: z.string().min(1).max(100).default("Default"),
@@ -78,4 +80,14 @@ export const signupSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, "Only alphanumeric, hyphens, and underscores allowed"),
   password: z.string().min(8, "Password must be at least 8 characters").max(200),
   turnstileToken: z.string().optional(),
+});
+
+export const adminEditProfileSchema = z.object({
+  username: z
+    .string()
+    .min(3, "Username must be at least 3 characters")
+    .max(30)
+    .regex(/^[a-zA-Z0-9_-]+$/, "Only alphanumeric, hyphens, and underscores allowed")
+    .optional(),
+  email: z.email("Invalid email address").optional(),
 });

@@ -21,14 +21,12 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { getCountryFlag, getCountryName } from "@/lib/countries";
+import { captureError } from "@/lib/errors";
 
 interface ClickRecord {
-  id: string;
+  _id: string;
   keyword: string;
-  linkTitle: string;
-  linkUrl: string;
   createdAt: string;
-  ip: string;
   countryCode: string;
   browser: string;
   os: string;
@@ -52,45 +50,50 @@ export default function UserClicksPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
+  // The click log endpoint is scoped to a single link (/api/v1/links/[keyword]/clicks) —
+  // there is no cross-keyword click feed, so a keyword must be entered to see anything.
+  const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [country, setCountry] = useState("");
-  const [browser, setBrowser] = useState("");
-  const [os, setOs] = useState("");
 
   const fetchClicks = useCallback(async () => {
+    if (!keyword) {
+      setClicks([]);
+      setTotal(0);
+      return;
+    }
     setLoading(true);
     const params = new URLSearchParams({
       page: String(page + 1),
       limit: String(rowsPerPage),
     });
-    if (keyword) params.set("keyword", keyword);
-    if (country) params.set("country", country);
-    if (browser) params.set("browser", browser);
-    if (os) params.set("os", os);
 
     try {
-      const res = await fetch(`/api/v1/user/clicks?${params}`);
+      const res = await fetch(`/api/v1/links/${keyword}/clicks?${params}`);
       const json = await res.json();
       if (json.success) {
         setClicks(json.data.clicks);
-        setTotal(json.data.total);
+        setTotal(json.data.pagination.total);
+      } else {
+        setClicks([]);
+        setTotal(0);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      captureError(err, { route: "dashboard/clicks", keyword });
     } finally {
       setLoading(false);
     }
-  }, [page, rowsPerPage, keyword, country, browser, os]);
+  }, [page, rowsPerPage, keyword]);
 
   useEffect(() => {
     fetchClicks();
   }, [fetchClicks]);
 
-  useEffect(() => {
+  function handleSearch() {
+    setKeyword(keywordInput.trim());
     setPage(0);
-  }, [keyword, country, browser, os]);
+  }
 
   return (
     <Box>
@@ -98,44 +101,28 @@ export default function UserClicksPage() {
         Click Log
       </Typography>
 
-      {/* Filters */}
+      {/* Keyword picker */}
       <Card sx={{ mb: 2, p: 2 }}>
         <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
           <TextField
             size="small"
             placeholder="Keyword"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            value={keywordInput}
+            onChange={(e) => setKeywordInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18 }} /></InputAdornment> } }}
-            sx={{ width: 150 }}
-          />
-          <TextField
-            size="small"
-            placeholder="Country code"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            sx={{ width: 130 }}
-          />
-          <TextField
-            size="small"
-            placeholder="Browser"
-            value={browser}
-            onChange={(e) => setBrowser(e.target.value)}
-            sx={{ width: 130 }}
-          />
-          <TextField
-            size="small"
-            placeholder="OS"
-            value={os}
-            onChange={(e) => setOs(e.target.value)}
-            sx={{ width: 130 }}
+            sx={{ width: 220 }}
           />
         </Box>
       </Card>
 
       {/* Table */}
       <Card>
-        {loading ? (
+        {!keyword ? (
+          <Box sx={{ py: 6, textAlign: "center" }}>
+            <Typography color="text.secondary">Enter a keyword above to view its click log</Typography>
+          </Box>
+        ) : loading ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
             <CircularProgress />
           </Box>
@@ -151,7 +138,6 @@ export default function UserClicksPage() {
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Time</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Keyword</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Visitor ID</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Browser</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>OS</TableCell>
@@ -160,7 +146,7 @@ export default function UserClicksPage() {
                 </TableHead>
                 <TableBody>
                   {clicks.map((click) => (
-                    <TableRow key={click.id} hover sx={{ cursor: "pointer" }} onClick={() => router.push(`/dashboard/links`)}>
+                    <TableRow key={click._id} hover sx={{ cursor: "pointer" }} onClick={() => router.push(`/dashboard/links/${click.keyword}`)}>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
                         <Tooltip title={new Date(click.createdAt).toLocaleString()}>
                           <span>{timeAgo(click.createdAt)}</span>
@@ -174,11 +160,6 @@ export default function UserClicksPage() {
                           variant="outlined"
                           clickable
                         />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12 }}>
-                          {click.ip}
-                        </Typography>
                       </TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
                         {click.countryCode ? (
