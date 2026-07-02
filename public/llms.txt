@@ -1,0 +1,92 @@
+# HMD.bio
+
+> URL shortener and link analytics platform with a public REST API, owner
+> dashboards, and an admin area. Base API URL: `https://hmd.bio/api/v1`.
+> All API responses are JSON shaped as `{ success, data?, error?, statusCode }`
+> unless a `?format=xml|jsonp|text` query param requests a different encoding.
+
+HMD.bio lets anyone shorten a URL, and lets registered owners manage their
+links, view click analytics, and integrate programmatically via a Bearer
+API key. This file follows the [llms.txt](https://llmstxt.org) convention:
+a curated entry point for LLMs and AI agents, pointing at the canonical,
+always-current sources below rather than duplicating them.
+
+## API reference
+
+- [OpenAPI 3 specification (JSON)](https://hmd.bio/api/docs): the complete,
+  machine-readable contract for every endpoint under `/api/v1` — paths,
+  methods, request/response schemas, auth requirements, rate-limit tiers,
+  and error shapes. This is the authoritative source; prefer it over any
+  natural-language description when generating API calls.
+- [Interactive Swagger UI](https://hmd.bio/docs): human-browsable rendering
+  of the same specification, useful for exploring endpoints interactively.
+
+## Authentication
+
+- **Session cookie** — browser-driven requests from the dashboard only.
+- **Bearer API key** — `Authorization: Bearer hmd_<key>`, issued via
+  `POST /api/v1/auth/api-keys` (requires an existing session). Keys are
+  shown in full exactly once at creation and stored hashed thereafter —
+  there is no way to retrieve a lost key, only revoke and reissue.
+- Public endpoints (`/shorten`, `/expand`, `/stats/[keyword]` for links the
+  caller doesn't own) work without authentication. Endpoints that manage a
+  specific account's links, exports, or API keys require a session or
+  Bearer key and return `401 Unauthorized` otherwise, or `403 Forbidden`
+  when authenticated but not the resource owner.
+
+## Rate limits
+
+Sliding-window limits apply per caller, enforced via Upstash Redis with a
+graceful in-memory fallback if Redis is unreachable (requests are never
+left unlimited, nor do they fail, when the fallback is active):
+
+- Public/unauthenticated: 30 requests/minute
+- Authenticated (session or API key): 100 requests/minute
+
+Exceeding the limit returns `429 Too Many Requests`.
+
+## Core endpoints
+
+- `POST /api/v1/shorten` — create a short link from a long URL. Public;
+  requires a Cloudflare Turnstile token when the deployment has Turnstile
+  configured, to prevent automated abuse.
+- `GET /api/v1/expand?keyword=<keyword>` — resolve a short keyword to its
+  destination URL without following the redirect. Public.
+- `GET /api/v1/links` — list the authenticated caller's own links, with
+  search, sort, and pagination. Requires auth.
+- `GET/PUT/DELETE /api/v1/links/{keyword}` — read, update, or delete a
+  single owned link. Requires auth and ownership (or admin role).
+- `GET /api/v1/stats/{keyword}` — per-link click analytics (referrers,
+  countries, browsers, operating systems, time series). Requires ownership
+  or admin role for links that have an owner.
+- `GET /api/v1/user/stats` — aggregate totals across all of the caller's
+  own links. Requires auth.
+- `GET /api/v1/links/export` — streamed CSV export of the caller's owned
+  links. Requires auth.
+- `POST /api/v1/links/bulk` — bulk-create links from a JSON array (capped
+  at 500 items per request). Requires auth.
+- `GET /api/v1/links/{keyword}/qr` — QR code image for a short link.
+- `POST /api/v1/links/{keyword}/unlock` — verify a password-protected
+  link's password, rate-limited against brute force. Public.
+
+Full request/response schemas for all of the above, plus auth (`/signup`,
+`/verify`, `/resend-verification`, `/email`), API key management
+(`/auth/api-keys`), and admin-only endpoints (`/admin/users`,
+`/admin/clicks`) are in the OpenAPI specification linked above — this file
+intentionally does not restate schema details that would drift out of sync.
+
+## Project background
+
+- [README](https://github.com/hmddevs/hmd-bio/blob/main/README.md): full
+  feature list, tech stack, project structure, environment variables, and
+  local development setup.
+- [Repository](https://github.com/hmddevs/hmd-bio): source code (Next.js
+  16 App Router, TypeScript strict, MongoDB via Mongoose, Upstash Redis,
+  NextAuth v5, Sentry).
+
+## Privacy and data handling
+
+Visitor IP addresses are never stored or logged in plaintext: they are
+one-way hashed for analytics grouping, or AES-encrypted for admin-only
+decryption. This is a hard invariant of the codebase, relevant if an agent
+is asked to reason about what data this service retains about end users.

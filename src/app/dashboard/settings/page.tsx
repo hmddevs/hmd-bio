@@ -24,6 +24,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import { captureError } from "@/lib/errors";
 
 interface ApiKey {
   _id: string;
@@ -62,7 +63,7 @@ export default function UserSettingsPage() {
       const data = await res.json();
       if (data.success) setApiKeys(data.data?.keys ?? []);
     } catch (err) {
-      console.error("Load keys error:", err);
+      captureError(err, { route: "dashboard/settings", action: "loadKeys" });
     }
     setKeysLoading(false);
   }
@@ -115,7 +116,7 @@ export default function UserSettingsPage() {
         loadKeys();
       }
     } catch (err) {
-      console.error("Create key error:", err);
+      captureError(err, { route: "dashboard/settings", action: "createKey" });
     }
   }
 
@@ -131,7 +132,7 @@ export default function UserSettingsPage() {
       setNewKeyResult("");
       loadKeys();
     } catch (err) {
-      console.error("Delete key error:", err);
+      captureError(err, { route: "dashboard/settings", action: "deleteKey" });
     }
   }
 

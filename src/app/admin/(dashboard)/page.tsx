@@ -1,16 +1,13 @@
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
-import { decrypt } from "@/lib/integrations/encryption";
-import DashboardClient from "@/components/shells/DashboardClient";
+import DashboardClient from "@/components/admin/DashboardClient";
 
 export default async function AdminDashboard() {
   await connectDB();
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
   const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const [
@@ -20,14 +17,11 @@ export default async function AdminDashboard() {
     recentLinks,
     recentActivity,
     weeklyTrend,
-    monthlyTrend,
-    quarterlyTrend,
     topCountries,
     linksCreatedLast7d,
     activeLinks,
     expiredLinks,
     avgClicksAgg,
-    recentClicks,
   ] = await Promise.all([
     Link.countDocuments(),
     Link.aggregate([{ $group: { _id: null, total: { $sum: "$clicks" } } }]),
@@ -54,33 +48,6 @@ export default async function AdminDashboard() {
       },
       { $sort: { _id: 1 } },
     ]),
-    // 30-day daily trend
-    Click.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-    ]),
-    // 90-day weekly trend
-    Click.aggregate([
-      { $match: { createdAt: { $gte: ninetyDaysAgo } } },
-      {
-        $group: {
-          _id: {
-            $dateToString: {
-              format: "%Y-%m-%d",
-              date: { $dateTrunc: { date: "$createdAt", unit: "week" } },
-            },
-          },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-    ]),
     // Top 5 countries globally
     Click.aggregate([
       { $match: { countryCode: { $ne: "" } } },
@@ -96,17 +63,11 @@ export default async function AdminDashboard() {
     Link.countDocuments({ expiresAt: { $lte: now } }),
     // Average clicks per link
     Link.aggregate([{ $group: { _id: null, avg: { $avg: "$clicks" } } }]),
-    // 5 most recent clicks
-    Click.find({})
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select("keyword createdAt ip ipRaw ipIv countryCode browser os referrer")
-      .lean(),
   ]);
 
   const totalClicks = totalClicksAgg[0]?.total ?? 0;
   const avgClicks = Math.round((avgClicksAgg[0]?.avg ?? 0) * 10) / 10;
-  const baseUrl = (process.env.AUTH_URL || "https://hmd.bio").trim().replace(/\/+$/, "");
+  const baseUrl = process.env.AUTH_URL || "https://hmd.bio";
 
   return (
     <DashboardClient
@@ -130,14 +91,6 @@ export default async function AdminDashboard() {
           date: d._id,
           count: d.count,
         })),
-        monthlyTrend: monthlyTrend.map((d: { _id: string; count: number }) => ({
-          date: d._id,
-          count: d.count,
-        })),
-        quarterlyTrend: quarterlyTrend.map((d: { _id: string; count: number }) => ({
-          date: d._id,
-          count: d.count,
-        })),
         topCountries: topCountries.map((c: { _id: string; count: number }) => ({
           code: c._id,
           count: c.count,
@@ -147,16 +100,6 @@ export default async function AdminDashboard() {
         expiredLinks,
         avgClicks,
         baseUrl,
-        recentClicks: recentClicks.map((c) => ({
-          keyword: c.keyword,
-          createdAt: c.createdAt.toISOString(),
-          ip: c.ip || "",
-          ipReal: c.ipRaw && c.ipIv ? decrypt(c.ipRaw, c.ipIv) : "",
-          countryCode: c.countryCode || "",
-          browser: c.browser || "",
-          os: c.os || "",
-          referrer: c.referrer || "",
-        })),
       }}
     />
   );

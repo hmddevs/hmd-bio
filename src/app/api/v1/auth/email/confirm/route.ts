@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
+import { captureError } from "@/lib/errors";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.redirect(`${base}/login?emailChange=success`);
   } catch (err) {
-    console.error("Email change confirm error:", err);
+    captureError(err, { route: "auth/email/confirm" });
     return NextResponse.redirect(`${base}/login?emailChange=error`);
   }
 }

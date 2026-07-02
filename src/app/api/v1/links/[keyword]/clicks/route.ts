@@ -1,25 +1,39 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { connectDB } from "@/lib/db";
 import { Click } from "@/models/Click";
 import { Link } from "@/models/Link";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { authenticateRequest, requireAdmin } from "@/lib/auth";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { requireAuth, requireOwnership } from "@/lib/api-auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/errors";
+
+const clicksQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ keyword: string }> }
 ) {
-  const user = await authenticateRequest(request);
-  if (!user) {
-    return apiError("Unauthorized", 401);
+  const authResult = await requireAuth(request);
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+
+  const rl = await rateLimit(`clicks-list:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) {
+    return apiError("Too many requests", 429);
   }
-  const forbidden = requireAdmin(user);
-  if (forbidden) return forbidden;
 
   try {
     const { keyword } = await params;
-    const page = Number(request.nextUrl.searchParams.get("page")) || 1;
-    const limit = Math.min(Number(request.nextUrl.searchParams.get("limit")) || 50, 100);
+    const searchParams = Object.fromEntries(request.nextUrl.searchParams);
+    const parsed = clicksQuerySchema.safeParse(searchParams);
+    if (!parsed.success) {
+      return apiError(parsed.error.issues[0].message, 400);
+    }
+    const { page, limit } = parsed.data;
 
     await connectDB();
 
@@ -27,6 +41,9 @@ export async function GET(
     if (!link) {
       return apiError("Link not found", 404);
     }
+
+    const forbidden = requireOwnership(link, session);
+    if (forbidden) return forbidden;
 
     const [clicks, total] = await Promise.all([
       Click.find({ keyword })
@@ -42,7 +59,7 @@ export async function GET(
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     });
   } catch (err) {
-    console.error("Click log error:", err);
+    captureError(err, { route: "v1/links/[keyword]/clicks" });
     return apiError("Internal server error", 500);
   }
 }

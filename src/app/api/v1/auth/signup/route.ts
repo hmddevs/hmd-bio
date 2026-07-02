@@ -2,19 +2,22 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { signupSchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { rateLimit } from "@/lib/api/rate-limit";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/errors";
+import { hashIP } from "@/lib/ip";
 import { isReservedKeyword } from "@/lib/utils";
-import { sendVerificationEmail } from "@/lib/integrations/email";
+import { sendVerificationEmail } from "@/lib/email";
+import { requireTurnstile } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit: 5 reg/min per IP
-    const ip =
+    const rawIp =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const rl = rateLimit(`signup:${ip}`, { limit: 5, windowMs: 60_000 });
+    const ipHash = hashIP(rawIp);
+    const rl = await rateLimit(`signup:${ipHash}`, { tier: "public" });
     if (!rl.allowed) {
       return apiError("Rate limit exceeded. Try again later.", 429);
     }
@@ -24,6 +27,9 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError(parsed.error.issues[0].message, 400);
     }
+
+    const turnstileFailure = await requireTurnstile(parsed.data.turnstileToken, request);
+    if (turnstileFailure) return turnstileFailure;
 
     const { email, username, password } = parsed.data;
 
@@ -70,7 +76,7 @@ export async function POST(request: NextRequest) {
       201
     );
   } catch (err) {
-    console.error("Signup error:", err);
+    captureError(err, { route: "auth/signup" });
     return apiError("Internal server error", 500);
   }
 }
