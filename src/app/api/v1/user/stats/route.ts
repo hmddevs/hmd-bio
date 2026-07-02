@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { Click } from "@/models/Click";
@@ -13,8 +14,8 @@ function dayKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-export async function GET() {
-  const authResult = await requireAuth();
+export async function GET(request: NextRequest) {
+  const authResult = await requireAuth(request);
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 

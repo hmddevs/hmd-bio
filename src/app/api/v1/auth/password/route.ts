@@ -9,7 +9,7 @@ import { captureError } from "@/lib/errors";
 import bcrypt from "bcryptjs";
 
 export async function PUT(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireAuth(request);
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 

@@ -215,7 +215,7 @@ export const openApiSpec = {
         summary: "List links",
         description:
           "Returns links owned by the caller. Admins are not scoped to their own links and see every link on the platform.",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 15 } },
@@ -263,7 +263,7 @@ export const openApiSpec = {
       get: {
         tags: ["Links"],
         summary: "Get a link",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
         responses: {
           "200": {
@@ -288,7 +288,7 @@ export const openApiSpec = {
       put: {
         tags: ["Links"],
         summary: "Update a link",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
         requestBody: {
           content: {
@@ -332,7 +332,7 @@ export const openApiSpec = {
         tags: ["Links"],
         summary: "Delete a link",
         description: "Deletes the link and its click log.",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
         responses: {
           "200": {
@@ -355,7 +355,7 @@ export const openApiSpec = {
       get: {
         tags: ["Stats"],
         summary: "Get the raw click log for a link",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { $ref: "#/components/parameters/KeywordPath" },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
@@ -398,7 +398,7 @@ export const openApiSpec = {
       post: {
         tags: ["Links"],
         summary: "Generate a QR code for a link",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
         responses: {
           "200": {
@@ -502,7 +502,7 @@ export const openApiSpec = {
       post: {
         tags: ["Links"],
         summary: "Bulk-create links",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -578,7 +578,7 @@ export const openApiSpec = {
         tags: ["Links"],
         summary: "Export links as CSV",
         description: "Streams a CSV of the caller's links (or every link, for admins).",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         responses: {
           "200": {
             description: "CSV file, streamed",
@@ -599,7 +599,7 @@ export const openApiSpec = {
       get: {
         tags: ["Stats"],
         summary: "Get detailed analytics for a link",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { $ref: "#/components/parameters/KeywordPath" },
           { name: "period", in: "query", schema: { type: "string", enum: ["24h", "7d", "30d", "all"], default: "all" } },
@@ -633,7 +633,7 @@ export const openApiSpec = {
         description:
           "Aggregates the caller's own links: totals, a 7-day click trend, top 5 links, and top 5 " +
           "countries. Not rate-limited beyond the platform's shared infrastructure limits.",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         responses: {
           "200": {
             description: "Dashboard summary",
@@ -771,7 +771,7 @@ export const openApiSpec = {
       put: {
         tags: ["Account"],
         summary: "Change your password",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -1061,7 +1061,7 @@ export const openApiSpec = {
         tags: ["Admin"],
         summary: "List users",
         description: "Admin-only. Supports pagination, a case-insensitive username/email search, and status filtering.",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } },
@@ -1108,7 +1108,7 @@ export const openApiSpec = {
           "Admin-only. A single action-based endpoint rather than a general-purpose profile PATCH. " +
           "`approve` and `verify` clear the account's pending verification state; `approve` also emails " +
           "the user. An admin can never target their own account through this endpoint.",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "string" }, description: "Target user's Mongo _id" },
         ],
@@ -1181,7 +1181,7 @@ export const openApiSpec = {
         description:
           "Admin-only. The user's links are kept but unlinked (`owner` set to null) rather than " +
           "deleted. An admin can never delete their own account through this endpoint.",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "string" }, description: "Target user's Mongo _id" },
         ],
@@ -1222,7 +1222,7 @@ export const openApiSpec = {
           "exposes the one-way analytics hash. Supports filtering by keyword, country, browser, and OS; " +
           "there is deliberately no IP filter, since encrypted values cannot be matched without " +
           "decrypting every row first.",
-        security: [{ session: [] }],
+        security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", default: 50, maximum: 100 } },
@@ -1618,15 +1618,26 @@ export const openApiSpec = {
         in: "cookie",
         name: "authjs.session-token",
         description:
-          "Dashboard session cookie, issued on sign-in at /login. This is the only auth " +
-          "method accepted by /api/v1/links/**, /api/v1/stats/**, /api/v1/user/stats, " +
-          "/api/v1/admin/**, and the session-gated parts of /api/v1/auth/** (api-keys, password, " +
-          "email, email/confirm). A `Bearer hmd_...` API key does NOT currently grant access to " +
-          "these endpoints, even though API keys can be minted from /api/v1/auth/api-keys. " +
+          "Dashboard session cookie, issued on sign-in at /login. Accepted alongside a Bearer " +
+          "API key (see BearerAuth) by /api/v1/links/**, /api/v1/stats/**, /api/v1/user/stats, " +
+          "/api/v1/admin/**, and /api/v1/auth/password. /api/v1/auth/api-keys and " +
+          "/api/v1/auth/email (and /email/confirm) are session-only by design — you shouldn't " +
+          "need an API key to manage API keys or change the account's own email. " +
           "/api/v1/admin/** additionally requires the signed-in user's `role` to be `admin`; there " +
-          "is no separate security scheme for this, it's an in-handler check enforced after the " +
-          "session cookie is validated. /api/v1/auth/signup, /api/v1/auth/verify, and " +
+          "is no separate security scheme for this, it's an in-handler check enforced after " +
+          "authentication succeeds. /api/v1/auth/signup, /api/v1/auth/verify, and " +
           "/api/v1/auth/resend-verification require no authentication at all.",
+      },
+      BearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "hmd_<64 hex chars>",
+        description:
+          "API key issued from /api/v1/auth/api-keys, sent as `Authorization: Bearer hmd_...`. " +
+          "Accepted as an alternative to the session cookie everywhere `session` is listed above " +
+          "(except the two session-only endpoints noted there). The key is validated by hashing " +
+          "the provided value and comparing against the stored hash — the raw key itself is never " +
+          "persisted after creation.",
       },
     },
   },

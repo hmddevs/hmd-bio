@@ -8,7 +8,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireAuth(request);
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
   if (session.user.role !== "admin") {

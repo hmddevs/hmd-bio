@@ -9,7 +9,7 @@ import { captureError } from "@/lib/errors";
 import { decryptIP } from "@/lib/ip";
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireAuth(request);
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
   if (session.user.role !== "admin") {

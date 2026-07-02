@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { apiError } from "@/lib/api-response";
@@ -24,8 +25,8 @@ function csvRow(l: {
   return `${csvField(l.keyword)},${csvField(l.url)},${csvField(l.title || "")},${l.clicks},${l.statusCode},${l.createdAt.toISOString()}\n`;
 }
 
-export async function GET() {
-  const authResult = await requireAuth();
+export async function GET(request: NextRequest) {
+  const authResult = await requireAuth(request);
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 

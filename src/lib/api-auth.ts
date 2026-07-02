@@ -1,4 +1,5 @@
-import { auth } from "@/lib/auth";
+import { NextRequest } from "next/server";
+import { authenticateRequest } from "@/lib/auth";
 import { apiError } from "@/lib/api-response";
 
 export interface AuthSession {
@@ -14,21 +15,24 @@ export type AuthResult =
   | { ok: false; response: Response };
 
 /**
- * Resolves the current session via NextAuth's `auth()`. Callers get back a
- * discriminated result: on failure, `response` is a ready-to-return 401
- * NextResponse; on success, `session` is guaranteed to have `user.id`.
+ * Resolves the current caller via a NextAuth session cookie OR a Bearer
+ * `hmd_*` API key (delegates to `authenticateRequest`, which tries the
+ * session first). Pass the route's `request` so Bearer-key auth is
+ * possible — omitting it restricts the caller to session-cookie auth only.
+ * Returns a discriminated result: on failure, `response` is a ready-to-return
+ * 401; on success, `session` is guaranteed to have `user.id`.
  *
  * Usage:
- *   const result = await requireAuth();
+ *   const result = await requireAuth(request);
  *   if (!result.ok) return result.response;
  *   const { session } = result;
  */
-export async function requireAuth(): Promise<AuthResult> {
-  const session = await auth();
-  if (!session?.user?.id) {
+export async function requireAuth(request?: NextRequest): Promise<AuthResult> {
+  const user = await authenticateRequest(request);
+  if (!user) {
     return { ok: false, response: apiError("Unauthorized", 401) };
   }
-  return { ok: true, session: session as AuthSession };
+  return { ok: true, session: { user } };
 }
 
 interface OwnableDoc {

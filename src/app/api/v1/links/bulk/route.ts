@@ -9,7 +9,7 @@ import { captureError } from "@/lib/errors";
 import { generateKeyword, isReservedKeyword, isAllowedProtocol } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireAuth(request);
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
