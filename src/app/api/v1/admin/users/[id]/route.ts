@@ -120,10 +120,10 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth();
+  const authResult = await requireAuth(request);
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
   if (session.user.role !== "admin") {
