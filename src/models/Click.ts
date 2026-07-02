@@ -4,7 +4,7 @@ export interface IClick extends Document {
   keyword: string;
   referrer: string;
   userAgent: string;
-  ip: string;
+  // AES-256-GCM encrypted IP, admin-decryptable only — never queried in plaintext.
   ipRaw: string;
   ipIv: string;
   countryCode: string;
@@ -18,7 +18,6 @@ const ClickSchema = new Schema<IClick>(
     keyword: { type: String, required: true, index: true },
     referrer: { type: String, default: "" },
     userAgent: { type: String, default: "" },
-    ip: { type: String, default: "" },
     ipRaw: { type: String, default: "" },
     ipIv: { type: String, default: "" },
     countryCode: { type: String, default: "", maxlength: 2 },

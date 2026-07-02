@@ -1,4 +1,18 @@
 import { customAlphabet } from "nanoid";
+import { lookup as dnsLookup } from "dns/promises";
+import { isIP } from "net";
+import { timingSafeEqual } from "crypto";
+
+/**
+ * Constant-time string comparison, for comparing shared secrets against a
+ * request-supplied value without leaking length/content via timing.
+ */
+export function timingSafeEqualStr(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 const CHARSET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const generate = customAlphabet(CHARSET, 5);
@@ -74,6 +88,63 @@ export function isAllowedProtocol(
   }
 }
 
+/**
+ * True if the given IP literal falls in a private, loopback, link-local, or
+ * cloud-metadata range. Blocks SSRF against internal services (e.g. Vercel/
+ * AWS metadata at 169.254.169.254) when following a user-supplied URL.
+ */
+function isPrivateOrReservedIP(ip: string): boolean {
+  const family = isIP(ip);
+  if (family === 4) {
+    const [a, b] = ip.split(".").map(Number);
+    return (
+      a === 127 || // loopback
+      a === 10 || // private
+      a === 0 || // "this" network
+      (a === 169 && b === 254) || // link-local / cloud metadata
+      (a === 172 && b >= 16 && b <= 31) || // private
+      (a === 192 && b === 168) || // private
+      (a === 100 && b >= 64 && b <= 127) // carrier-grade NAT
+    );
+  }
+  if (family === 6) {
+    const lower = ip.toLowerCase();
+    return (
+      lower === "::1" ||
+      lower.startsWith("fe80:") || // link-local
+      lower.startsWith("fc") ||
+      lower.startsWith("fd") // unique local
+    );
+  }
+  return true; // unparsable — treat as unsafe
+}
+
+/**
+ * Resolves the URL's hostname and rejects it if it (or any resolved
+ * address) points at a private/loopback/link-local/metadata IP.
+ */
+async function isSafeExternalUrl(url: string): Promise<boolean> {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  if (host === "localhost") return false;
+
+  const literalFamily = isIP(host);
+  if (literalFamily) {
+    return !isPrivateOrReservedIP(host);
+  }
+
+  try {
+    const addresses = await dnsLookup(host, { all: true, verbatim: true });
+    return addresses.every((a) => !isPrivateOrReservedIP(a.address));
+  } catch {
+    return false; // DNS failure — fail closed
+  }
+}
+
 export async function fetchPageTitle(url: string): Promise<string> {
   // YouTube oEmbed shortcut
   const ytMatch = url.match(
@@ -93,13 +164,28 @@ export async function fetchPageTitle(url: string): Promise<string> {
   }
 
   try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(5000),
-      headers: { "User-Agent": "HMD.bio URL Shortener" },
-    });
-    const html = await res.text();
-    const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    return match?.[1]?.trim() || "";
+    let current = url;
+    for (let redirects = 0; redirects < 5; redirects++) {
+      if (!(await isSafeExternalUrl(current))) return "";
+
+      const res = await fetch(current, {
+        signal: AbortSignal.timeout(5000),
+        headers: { "User-Agent": "HMD.bio URL Shortener" },
+        redirect: "manual",
+      });
+
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get("location");
+        if (!location) return "";
+        current = new URL(location, current).toString();
+        continue;
+      }
+
+      const html = await res.text();
+      const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      return match?.[1]?.trim() || "";
+    }
+    return "";
   } catch {
     return "";
   }

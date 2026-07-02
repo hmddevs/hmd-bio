@@ -15,6 +15,7 @@ import {
   ListItemButton,
   ListItemText,
   Chip,
+  Alert,
 } from "@mui/material";
 import LinkIcon from "@mui/icons-material/Link";
 import TouchAppIcon from "@mui/icons-material/TouchApp";
@@ -47,17 +48,21 @@ export default function DashboardPage() {
   const theme = useTheme();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
+      setLoading(true);
+      setError(null);
       try {
         const res = await fetch("/api/v1/user/stats");
         const json = await res.json();
-        if (json.success) {
-          setStats(json.data);
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || "Failed to load dashboard stats");
         }
-      } catch (err) {
-        console.error("Dashboard fetch error:", err);
+        setStats(json.data);
+      } catch {
+        setError("Couldn't load your stats. Please try refreshing the page.");
       } finally {
         setLoading(false);
       }
@@ -68,6 +73,22 @@ export default function DashboardPage() {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+          <Typography variant="h5" fontWeight={700}>
+            Dashboard
+          </Typography>
+          <Button variant="contained" onClick={() => router.push("/dashboard/links/new")}>
+            Create Link
+          </Button>
+        </Box>
+        <Alert severity="error">{error}</Alert>
       </Box>
     );
   }

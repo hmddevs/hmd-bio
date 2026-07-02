@@ -2,16 +2,20 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { linksQuerySchema } from "@/lib/validations";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { authenticateRequest, requireAdmin } from "@/lib/auth";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { requireAuth } from "@/lib/api-auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/errors";
 
 export async function GET(request: NextRequest) {
-  const user = await authenticateRequest(request);
-  if (!user) {
-    return apiError("Unauthorized", 401);
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+
+  const rl = await rateLimit(`links-list:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) {
+    return apiError("Too many requests", 429);
   }
-  const forbidden = requireAdmin(user);
-  if (forbidden) return forbidden;
 
   try {
     const searchParams = Object.fromEntries(request.nextUrl.searchParams);
@@ -28,6 +32,10 @@ export async function GET(request: NextRequest) {
     // Build filter
     const filter: Record<string, unknown> = {};
 
+    if (session.user.role !== "admin") {
+      filter.owner = session.user.id;
+    }
+
     if (search) {
       const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = { $regex: escaped, $options: "i" };
@@ -35,17 +43,7 @@ export async function GET(request: NextRequest) {
         { keyword: regex },
         { url: regex },
         { title: regex },
-        { ip: regex },
       ];
-    }
-
-    // Owner-type filter: "public" (no owner), "admin", or a specific user id
-    const ownerType = searchParams["ownerType"];
-    if (ownerType === "public") {
-      filter.owner = null;
-    } else if (ownerType && ownerType !== "all") {
-      // ownerType is a user ID
-      filter.owner = ownerType;
     }
 
     if (dateFrom || dateTo) {
@@ -64,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     const [links, total] = await Promise.all([
       Link.find(filter)
-        .populate("owner", "username email")
+        .select("-password -ipRaw -ipIv")
         .sort(sortObj)
         .skip((page - 1) * limit)
         .limit(limit)
@@ -82,7 +80,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("Links list error:", err);
+    captureError(err, { route: "api/v1/links" });
     return apiError("Internal server error", 500);
   }
 }

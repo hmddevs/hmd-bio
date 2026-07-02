@@ -4,7 +4,9 @@ export interface ILink extends Document {
   keyword: string;
   url: string;
   title: string;
-  ip: string;
+  // AES-256-GCM encrypted creator IP, admin-decryptable only — never search this in plaintext.
+  ipRaw: string;
+  ipIv: string;
   clicks: number;
   statusCode: 301 | 302;
   isPasswordProtected: boolean;
@@ -31,7 +33,8 @@ const LinkSchema = new Schema<ILink>(
     },
     url: { type: String, required: true },
     title: { type: String, default: "" },
-    ip: { type: String, default: "" },
+    ipRaw: { type: String, default: "" },
+    ipIv: { type: String, default: "" },
     clicks: { type: Number, default: 0, min: 0 },
     statusCode: { type: Number, enum: [301, 302], default: 302 },
     isPasswordProtected: { type: Boolean, default: false },

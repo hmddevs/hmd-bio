@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
 import MuiProvider from "@/components/providers/MuiProvider";
-import AdminShell from "@/components/shells/AdminShell";
+import AdminShell from "@/components/admin/AdminShell";
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
@@ -15,11 +15,7 @@ export default async function AdminLayout({
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/login");
-  }
-
-  if (session.user.role !== "admin") {
-    redirect("/dashboard");
+    redirect("/admin/login");
   }
 
   return (

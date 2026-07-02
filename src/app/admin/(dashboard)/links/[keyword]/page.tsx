@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Box,
@@ -32,13 +32,6 @@ import {
   Tooltip,
   ToggleButton,
   ToggleButtonGroup,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TablePagination,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EditIcon from "@mui/icons-material/Edit";
@@ -49,15 +42,18 @@ import PublicIcon from "@mui/icons-material/Public";
 import DevicesIcon from "@mui/icons-material/Devices";
 import LinkIcon from "@mui/icons-material/Link";
 import TimelineIcon from "@mui/icons-material/Timeline";
-import TouchAppIcon from "@mui/icons-material/TouchApp";
 import StarIcon from "@mui/icons-material/Star";
 import { useTheme } from "@mui/material/styles";
-import { LineChart } from "@mui/x-charts/LineChart";
-import { PieChart as MuiPieChart } from "@mui/x-charts/PieChart";
-import { getCountryFlag, getCountryName } from "@/lib/countries";
-
+import { LineChart, PieChart } from "@mui/x-charts";
 // Lazy-load the heavy map component to reduce initial bundle
 const CountryMapSection = lazy(() => import("./CountryMap"));
+
+// Builds a PieChart arcLabel callback showing "name (pct%)", matching the
+// previous chart's label format.
+function makeArcLabel(total: number) {
+  return (item: { label?: string; value: number }) =>
+    `${item.label ?? ""} (${total ? Math.round((item.value / total) * 100) : 0}%)`;
+}
 
 interface LinkData {
   keyword: string;
@@ -115,14 +111,10 @@ export default function LinkDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [clicksData, setClicksData] = useState<{ id: string; createdAt: string; ip: string; ipReal: string; countryCode: string; browser: string; os: string; referrer: string; userAgent: string }[]>([]);
-  const [clicksTotal, setClicksTotal] = useState(0);
-  const [clicksPage, setClicksPage] = useState(0);
-  const [clicksLoading, setClicksLoading] = useState(false);
   const [form, setForm] = useState({
     url: "",
     title: "",
-    statusCode: 302,
+    statusCode: 301,
     newPassword: "",
     removePassword: false,
     expiresAt: "",
@@ -130,7 +122,6 @@ export default function LinkDetailPage() {
     ogDescription: "",
     ogImage: "",
   });
-  const [saveError, setSaveError] = useState("");
   const [qrSvg, setQrSvg] = useState("");
 
   const baseUrl = typeof window !== "undefined"
@@ -138,12 +129,6 @@ export default function LinkDetailPage() {
     : "https://hmd.bio";
 
   const shortUrl = `${baseUrl}/${keyword}`;
-
-  const loadStats = useCallback(async (p: Period) => {
-    const res = await fetch(`/api/v1/stats/${keyword}?period=${p}`);
-    const data = await res.json();
-    if (data.success) setStats(data.data);
-  }, [keyword]);
 
   useEffect(() => {
     async function loadLink() {
@@ -164,32 +149,14 @@ export default function LinkDetailPage() {
         });
       }
     }
-    loadLink();
-  }, [keyword]);
-
-  useEffect(() => {
-     
-    loadStats(period);
-  }, [keyword, loadStats, period]);
-
-  const loadClicks = useCallback(async (pg: number) => {
-    setClicksLoading(true);
-    try {
-      const res = await fetch(`/api/v1/admin/clicks?keyword=${keyword}&page=${pg + 1}&limit=25`);
+    async function loadStats(p: Period) {
+      const res = await fetch(`/api/v1/stats/${keyword}?period=${p}`);
       const data = await res.json();
-      if (data.success) {
-        setClicksData(data.data.clicks);
-        setClicksTotal(data.data.total);
-      }
-    } catch { /* ignore */ } finally {
-      setClicksLoading(false);
+      if (data.success) setStats(data.data);
     }
-  }, [keyword]);
-
-  // Load clicks when Clicks tab (index 4) is selected
-  useEffect(() => {
-    if (tab === 4) loadClicks(clicksPage);
-  }, [tab, clicksPage, loadClicks]);
+    loadLink();
+    loadStats(period);
+  }, [keyword, period]);
 
   function handlePeriodChange(_: React.MouseEvent<HTMLElement>, val: Period | null) {
     if (val) {
@@ -199,11 +166,10 @@ export default function LinkDetailPage() {
 
   async function handleSave() {
     setSaving(true);
-    setSaveError("");
     const body: Record<string, unknown> = {
       url: form.url,
       title: form.title,
-      statusCode: String(form.statusCode),
+      statusCode: form.statusCode,
       ogTitle: form.ogTitle || undefined,
       ogDescription: form.ogDescription || undefined,
       ogImage: form.ogImage || undefined,
@@ -212,24 +178,17 @@ export default function LinkDetailPage() {
     if (form.removePassword) body.removePassword = true;
     if (form.expiresAt) body.expiresAt = new Date(form.expiresAt).toISOString();
 
-    try {
-      const res = await fetch(`/api/v1/links/${keyword}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setLink(data.data);
-        setEditOpen(false);
-      } else {
-        setSaveError(data.error || "Failed to save changes");
-      }
-    } catch {
-      setSaveError("Network error");
-    } finally {
-      setSaving(false);
+    const res = await fetch(`/api/v1/links/${keyword}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setLink(data.data);
+      setEditOpen(false);
     }
+    setSaving(false);
   }
 
   async function handleGenerateQr() {
@@ -384,7 +343,6 @@ export default function LinkDetailPage() {
             <Tab icon={<LinkIcon />} iconPosition="start" label="Referrers" />
             <Tab icon={<PublicIcon />} iconPosition="start" label="Countries" />
             <Tab icon={<DevicesIcon />} iconPosition="start" label="Browser / OS" />
-            <Tab icon={<TouchAppIcon />} iconPosition="start" label="Clicks" />
             <Tab icon={<ShareIcon />} iconPosition="start" label="Share" />
           </Tabs>
           <CardContent>
@@ -414,35 +372,30 @@ export default function LinkDetailPage() {
                 ) : (
                   <LineChart
                     height={300}
-                    series={[
-                      {
-                        data: stats.timeline.map((d) => d.count),
-                        curve: "linear",
-                        showMark: false,
-                        label: "Clicks",
-                        color: theme.palette.primary.main,
-                      },
-                    ]}
+                    dataset={stats.timeline}
+                    grid={{ horizontal: true }}
                     xAxis={[
                       {
-                        data: stats.timeline.map((d) => d.date),
+                        dataKey: "date",
                         scaleType: "point",
-                        tickLabelStyle: {
-                          fontSize: 11,
-                          fill: theme.palette.text.secondary,
-                        },
                         valueFormatter: (v: string) => v.slice(5),
+                        tickLabelStyle: { fontSize: 11, fill: theme.palette.text.secondary },
                       },
                     ]}
                     yAxis={[
                       {
-                        tickLabelStyle: {
-                          fontSize: 11,
-                          fill: theme.palette.text.secondary,
-                        },
+                        tickLabelStyle: { fontSize: 11, fill: theme.palette.text.secondary },
                       },
                     ]}
-                    grid={{ horizontal: true }}
+                    series={[
+                      {
+                        dataKey: "count",
+                        label: "Clicks",
+                        area: true,
+                        showMark: true,
+                        color: theme.palette.primary.main,
+                      },
+                    ]}
                     hideLegend
                   />
                 )}
@@ -460,27 +413,24 @@ export default function LinkDetailPage() {
                 ) : (
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <MuiPieChart
+                      <PieChart
                         height={280}
+                        hideLegend
                         series={[
                           {
                             data: stats.referrers.slice(0, 10).map((r, i) => ({
-                              id: i,
+                              id: r.referrer,
                               value: r.count,
                               label: r.referrer,
                               color: pieColors[i % pieColors.length],
                             })),
-                            innerRadius: 40,
                             outerRadius: 100,
-                            paddingAngle: 1,
-                            cornerRadius: 2,
+                            arcLabel: makeArcLabel(
+                              stats.referrers.slice(0, 10).reduce((sum, r) => sum + r.count, 0)
+                            ),
+                            arcLabelMinAngle: 15,
                           },
                         ]}
-                        slotProps={{
-                          legend: {
-                            direction: "vertical",
-                          },
-                        }}
                       />
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
@@ -540,60 +490,50 @@ export default function LinkDetailPage() {
                 ) : (
                   <Grid container spacing={3}>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>Browsers</Typography>
+                      <Typography variant="subtitle2" gutterBottom>Browsers</Typography>
                       {stats.browsers.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">No data</Typography>
                       ) : (
-                        <MuiPieChart
+                        <PieChart
                           height={280}
                           series={[
                             {
                               data: stats.browsers.map((b, i) => ({
-                                id: i,
+                                id: b.name,
                                 value: b.count,
                                 label: b.name,
                                 color: pieColors[i % pieColors.length],
                               })),
-                              innerRadius: 30,
                               outerRadius: 90,
-                              paddingAngle: 1,
-                              cornerRadius: 2,
+                              arcLabel: makeArcLabel(stats.browsers.reduce((sum, b) => sum + b.count, 0)),
+                              arcLabelMinAngle: 15,
                             },
                           ]}
-                          slotProps={{
-                            legend: {
-                              direction: "horizontal",
-                            },
-                          }}
                         />
                       )}
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>Operating Systems</Typography>
+                      <Typography variant="subtitle2" gutterBottom>Operating Systems</Typography>
                       {stats.operatingSystems.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">No data</Typography>
                       ) : (
-                        <MuiPieChart
+                        <PieChart
                           height={280}
                           series={[
                             {
-                              data: stats.operatingSystems.map((os, i) => ({
-                                id: i,
-                                value: os.count,
-                                label: os.name,
+                              data: stats.operatingSystems.map((o, i) => ({
+                                id: o.name,
+                                value: o.count,
+                                label: o.name,
                                 color: pieColors[(i + 5) % pieColors.length],
                               })),
-                              innerRadius: 30,
                               outerRadius: 90,
-                              paddingAngle: 1,
-                              cornerRadius: 2,
+                              arcLabel: makeArcLabel(
+                                stats.operatingSystems.reduce((sum, o) => sum + o.count, 0)
+                              ),
+                              arcLabelMinAngle: 15,
                             },
                           ]}
-                          slotProps={{
-                            legend: {
-                              direction: "horizontal",
-                            },
-                          }}
                         />
                       )}
                     </Grid>
@@ -602,98 +542,8 @@ export default function LinkDetailPage() {
               </Box>
             )}
 
-            {/* Clicks Tab */}
-            {tab === 4 && (
-              <Box>
-                {clicksLoading ? (
-                  <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                    <CircularProgress />
-                  </Box>
-                ) : clicksData.length === 0 ? (
-                  <Typography color="text.secondary">No click data yet</Typography>
-                ) : (
-                  <>
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell sx={{ fontWeight: 600 }}>Time</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>IP</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Browser</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>OS</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Referrer</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {clicksData.map((click) => (
-                            <TableRow key={click.id} hover>
-                              <TableCell sx={{ whiteSpace: "nowrap" }}>
-                                <Tooltip title={new Date(click.createdAt).toLocaleString()}>
-                                  <Typography variant="body2">
-                                    {(() => {
-                                      const diff = Date.now() - new Date(click.createdAt).getTime();
-                                      const mins = Math.floor(diff / 60000);
-                                      if (mins < 1) return "just now";
-                                      if (mins < 60) return `${mins}m ago`;
-                                      const hrs = Math.floor(mins / 60);
-                                      if (hrs < 24) return `${hrs}h ago`;
-                                      return `${Math.floor(hrs / 24)}d ago`;
-                                    })()}
-                                  </Typography>
-                                </Tooltip>
-                              </TableCell>
-                              <TableCell>
-                                <Tooltip title={click.ipReal ? click.ip : ""}>
-                                  <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12 }}>
-                                    {click.ipReal || click.ip}
-                                  </Typography>
-                                </Tooltip>
-                              </TableCell>
-                              <TableCell sx={{ whiteSpace: "nowrap" }}>
-                                {click.countryCode ? (
-                                  <Tooltip title={getCountryName(click.countryCode)}>
-                                    <span>{getCountryFlag(click.countryCode)} {click.countryCode}</span>
-                                  </Tooltip>
-                                ) : "—"}
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2" noWrap>{click.browser || "—"}</Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2" noWrap>{click.os || "—"}</Typography>
-                              </TableCell>
-                              <TableCell sx={{ maxWidth: 200 }}>
-                                {click.referrer ? (
-                                  <Tooltip title={click.referrer}>
-                                    <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-                                      {(() => { try { return new URL(click.referrer).hostname; } catch { return click.referrer; } })()}
-                                    </Typography>
-                                  </Tooltip>
-                                ) : (
-                                  <Typography variant="body2" color="text.secondary">Direct</Typography>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                    <TablePagination
-                      component="div"
-                      count={clicksTotal}
-                      page={clicksPage}
-                      onPageChange={(_, p) => setClicksPage(p)}
-                      rowsPerPage={25}
-                      rowsPerPageOptions={[25]}
-                    />
-                  </>
-                )}
-              </Box>
-            )}
-
             {/* Share Tab */}
-            {tab === 5 && (
+            {tab === 4 && (
               <Box>
                 <Alert severity="info" sx={{ mb: 2 }}>
                   Share this link: <strong>{shortUrl}</strong>
@@ -742,11 +592,10 @@ export default function LinkDetailPage() {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={editOpen} onClose={() => { setEditOpen(false); setSaveError(""); }} maxWidth="sm" fullWidth>
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Link</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
-            {saveError && <Alert severity="error">{saveError}</Alert>}
             <TextField
               label="Destination URL"
               type="url"

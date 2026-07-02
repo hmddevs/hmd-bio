@@ -2,23 +2,49 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { Link } from "@/models/Link";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { authenticateRequest, requireAdmin } from "@/lib/auth";
-import { sendApprovalEmail } from "@/lib/integrations/email";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { requireAuth } from "@/lib/api-auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/errors";
+import { sendApprovalEmail } from "@/lib/email";
+import { adminEditProfileSchema } from "@/lib/validations";
+import mongoose from "mongoose";
+
+const VALID_ACTIONS = new Set([
+  "approve",
+  "disable",
+  "enable",
+  "verify",
+  "promote",
+  "demote",
+  "editProfile",
+]);
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await authenticateRequest(request);
-  if (!user) return apiError("Unauthorized", 401);
-  const forbidden = requireAdmin(user);
-  if (forbidden) return forbidden;
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+  if (session.user.role !== "admin") {
+    return apiError("Forbidden — admin access required", 403);
+  }
+
+  const rl = await rateLimit(`admin-users:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) return apiError("Too many requests", 429);
 
   try {
     const { id } = await params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return apiError("Invalid user id", 400);
+    }
+
     const body = await request.json();
     const { action } = body as { action: string };
+    if (typeof action !== "string" || !VALID_ACTIONS.has(action)) {
+      return apiError("Invalid action. Use: approve, disable, enable, verify, promote, demote, editProfile", 400);
+    }
 
     await connectDB();
 
@@ -26,16 +52,17 @@ export async function PATCH(
     if (!target) return apiError("User not found", 404);
 
     // Prevent self-modification
-    if (target._id.toString() === user.id) {
+    if (target._id.toString() === session.user.id) {
       return apiError("Cannot modify your own account this way", 400);
     }
 
     switch (action) {
       case "approve":
         target.status = "approved";
-        await target.save();
-        // Send approval notification email
-        sendApprovalEmail(target.email, target.username).catch(() => {});
+        // Notify the user their account is approved (non-blocking)
+        sendApprovalEmail(target.email, target.username).catch((notifyErr: unknown) =>
+          captureError(notifyErr, { route: "admin/users/[id]", stage: "approval-notify" })
+        );
         break;
       case "disable":
         target.status = "disabled";
@@ -55,7 +82,11 @@ export async function PATCH(
         target.role = "user";
         break;
       case "editProfile": {
-        const { username, email } = body as { username?: string; email?: string };
+        const parsed = adminEditProfileSchema.safeParse(body);
+        if (!parsed.success) {
+          return apiError(parsed.error.issues[0].message, 400);
+        }
+        const { username, email } = parsed.data;
         if (username) {
           const dup = await User.findOne({ username, _id: { $ne: target._id } });
           if (dup) return apiError("Username already taken", 409);
@@ -83,19 +114,24 @@ export async function PATCH(
       status: target.status,
     });
   } catch (err) {
-    console.error("Admin user action error:", err);
+    captureError(err, { route: "admin/users/[id]:PATCH" });
     return apiError("Internal server error", 500);
   }
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await authenticateRequest(request);
-  if (!user) return apiError("Unauthorized", 401);
-  const forbidden = requireAdmin(user);
-  if (forbidden) return forbidden;
+  const authResult = await requireAuth();
+  if (!authResult.ok) return authResult.response;
+  const { session } = authResult;
+  if (session.user.role !== "admin") {
+    return apiError("Forbidden — admin access required", 403);
+  }
+
+  const rl = await rateLimit(`admin-users:${session.user.id}`, { tier: "authenticated" });
+  if (!rl.allowed) return apiError("Too many requests", 429);
 
   try {
     const { id } = await params;
@@ -105,7 +141,7 @@ export async function DELETE(
     const target = await User.findById(id);
     if (!target) return apiError("User not found", 404);
 
-    if (target._id.toString() === user.id) {
+    if (target._id.toString() === session.user.id) {
       return apiError("Cannot delete your own account", 400);
     }
 
@@ -116,7 +152,7 @@ export async function DELETE(
 
     return apiSuccess({ message: `User ${target.username} deleted` });
   } catch (err) {
-    console.error("Admin user delete error:", err);
+    captureError(err, { route: "admin/users/[id]:DELETE" });
     return apiError("Internal server error", 500);
   }
 }
