@@ -1,15 +1,18 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
-import { apiSuccess, apiError } from "@/lib/api/api-response";
-import { rateLimit } from "@/lib/api/rate-limit";
-import { sendVerificationEmail } from "@/lib/integrations/email";
+import { apiSuccess, apiError } from "@/lib/api-response";
+import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/errors";
+import { hashIP } from "@/lib/ip";
+import { sendVerificationEmail } from "@/lib/email";
 import { randomBytes } from "crypto";
 
 export async function POST(request: NextRequest) {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const rl = rateLimit(`resend-verify:${ip}`, { limit: 3, windowMs: 300_000 });
+  const rawIp =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  const ipHash = hashIP(rawIp);
+  const rl = await rateLimit(`resend-verify:${ipHash}`, { tier: "public" });
   if (!rl.allowed) {
     return apiError("Too many requests. Try again in a few minutes.", 429);
   }
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
       message: "If an unverified account exists with that email, a new verification link has been sent.",
     });
   } catch (err) {
-    console.error("Resend verification error:", err);
+    captureError(err, { route: "auth/resend-verification" });
     return apiError("Internal server error", 500);
   }
 }

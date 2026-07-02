@@ -1,0 +1,21 @@
+{
+  "allowedTools": [
+    "Bash(pnpm dev)",
+    "Bash(pnpm build)",
+    "Bash(pnpm lint)",
+    "Bash(pnpm install)",
+    "Bash(pnpm add *)",
+    "Bash(pnpm remove *)",
+    "Bash(npx tsc --noEmit)",
+    "Bash(git status)",
+    "Bash(git diff*)",
+    "Bash(git log*)",
+    "Bash(git add*)",
+    "Bash(git commit*)",
+    "Bash(git branch*)",
+    "Bash(git checkout*)",
+    "Bash(find*)",
+    "Bash(grep*)",
+    "Bash(ls*)"
+  ]
+}

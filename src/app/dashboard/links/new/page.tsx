@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Box,
   Typography,
@@ -15,10 +15,9 @@ import {
 
 export default function CreateLinkPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [url, setUrl] = useState(searchParams.get("url") || "");
-  const [keyword, setKeyword] = useState(searchParams.get("keyword") || "");
-  const [title, setTitle] = useState(searchParams.get("title") || "");
+  const [url, setUrl] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);

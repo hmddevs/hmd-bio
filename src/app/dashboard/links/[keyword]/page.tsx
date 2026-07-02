@@ -109,7 +109,7 @@ export default function UserLinkDetailPage() {
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
-  const [clicksData, setClicksData] = useState<{ id: string; createdAt: string; countryCode: string; browser: string; os: string; referrer: string }[]>([]);
+  const [clicksData, setClicksData] = useState<{ _id: string; createdAt: string; countryCode: string; browser: string; os: string; referrer: string }[]>([]);
   const [clicksTotal, setClicksTotal] = useState(0);
   const [clicksPage, setClicksPage] = useState(0);
   const [clicksLoading, setClicksLoading] = useState(false);
@@ -130,14 +130,14 @@ export default function UserLinkDetailPage() {
   const shortUrl = `${baseUrl}/${keyword}`;
 
   const loadStats = useCallback(async (p: Period) => {
-    const res = await fetch(`/api/v1/user/stats/${keyword}?period=${p}`);
+    const res = await fetch(`/api/v1/stats/${keyword}?period=${p}`);
     const data = await res.json();
     if (data.success) setStats(data.data);
   }, [keyword]);
 
   useEffect(() => {
     async function loadLink() {
-      const res = await fetch(`/api/v1/user/links/${keyword}`);
+      const res = await fetch(`/api/v1/links/${keyword}`);
       const data = await res.json();
       if (data.success) {
         setLink(data.data);
@@ -166,11 +166,11 @@ export default function UserLinkDetailPage() {
   const loadClicks = useCallback(async (pg: number) => {
     setClicksLoading(true);
     try {
-      const res = await fetch(`/api/v1/user/clicks?keyword=${keyword}&page=${pg + 1}&limit=25`);
+      const res = await fetch(`/api/v1/links/${keyword}/clicks?page=${pg + 1}&limit=25`);
       const data = await res.json();
       if (data.success) {
         setClicksData(data.data.clicks);
-        setClicksTotal(data.data.total);
+        setClicksTotal(data.data.pagination.total);
       }
     } catch { /* ignore */ } finally {
       setClicksLoading(false);
@@ -200,7 +200,7 @@ export default function UserLinkDetailPage() {
     if (form.removePassword) body.removePassword = true;
     if (form.expiresAt) body.expiresAt = new Date(form.expiresAt).toISOString();
 
-    const res = await fetch(`/api/v1/user/links/${keyword}`, {
+    const res = await fetch(`/api/v1/links/${keyword}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -220,7 +220,7 @@ export default function UserLinkDetailPage() {
   }
 
   async function handleGenerateQr() {
-    const res = await fetch(`/api/v1/user/links/${keyword}/qr`, {
+    const res = await fetch(`/api/v1/links/${keyword}/qr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -536,7 +536,7 @@ export default function UserLinkDetailPage() {
                         </TableHead>
                         <TableBody>
                           {clicksData.map((click) => (
-                            <TableRow key={click.id} hover>
+                            <TableRow key={click._id} hover>
                               <TableCell sx={{ whiteSpace: "nowrap" }}>
                                 <Tooltip title={new Date(click.createdAt).toLocaleString()}>
                                   <Typography variant="body2">

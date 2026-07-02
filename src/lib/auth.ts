@@ -4,8 +4,9 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { NextRequest } from "next/server";
-import { apiError } from "@/lib/api/api-response";
+import { apiError } from "@/lib/api-response";
 import { verifyTurnstile } from "@/lib/utils";
+import { hashApiKey } from "@/lib/api-keys";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -90,7 +91,7 @@ export async function authenticateRequest(
   const apiKey = authHeader.slice(7); // "Bearer " = 7 chars
   await connectDB();
 
-  const user = await User.findOne({ "apiKeys.key": apiKey }).lean();
+  const user = await User.findOne({ "apiKeys.keyHash": hashApiKey(apiKey) }).lean();
   if (!user) return null;
   if (!user.isVerified || user.status !== "approved") return null;
 

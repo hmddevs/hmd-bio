@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCachedLink } from "@/lib/integrations/cache";
 
 const BYPASS_PREFIXES = [
   "/admin",
@@ -50,33 +49,7 @@ export async function proxy(request: NextRequest) {
   const referrer = request.headers.get("referer") || "";
   const countryCode = request.headers.get("x-vercel-ip-country") || "";
 
-  // ── Fast path: try Redis cache first (edge-compatible, ~1ms) ──
-  try {
-    const cached = await getCachedLink(keyword);
-    if (cached) {
-      if (cached.isPasswordProtected) {
-        const passwordUrl = new URL(`/password/${keyword}`, request.url);
-        return NextResponse.rewrite(passwordUrl);
-      }
-
-      // Fire-and-forget click logging (don't await)
-      const logUrl = new URL("/api/internal/log-click", request.url);
-      fetch(logUrl.toString(), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-internal-secret": process.env.INTERNAL_SECRET || "",
-        },
-        body: JSON.stringify({ keyword, ip, userAgent, referrer, countryCode }),
-      }).catch(() => {});
-
-      return NextResponse.redirect(cached.url, cached.statusCode || 302);
-    }
-  } catch {
-    // Redis unavailable — fall through to internal API
-  }
-
-  // ── Slow path: resolve via internal API (MongoDB) ──
+  // ── Resolve via internal API (MongoDB) ──
   const resolveUrl = new URL("/api/internal/resolve", request.url);
   resolveUrl.searchParams.set("keyword", keyword);
 
