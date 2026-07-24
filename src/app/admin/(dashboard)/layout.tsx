@@ -18,6 +18,11 @@ export default async function AdminLayout({
     redirect("/admin/login");
   }
 
+  // Non-admins go to the regular user dashboard
+  if (session.user.role !== "admin") {
+    redirect("/dashboard");
+  }
+
   return (
     <SessionProvider session={session}>
       <MuiProvider>
