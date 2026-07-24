@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useRef, useCallback, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import NextLink from "next/link";
+import Script from "next/script";
 import {
   Box,
   Card,
@@ -15,6 +16,17 @@ import {
 } from "@mui/material";
 import MuiProvider from "@/components/providers/MuiProvider";
 
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (el: HTMLElement, opts: Record<string, unknown>) => string;
+      reset: (el: HTMLElement | string) => void;
+    };
+  }
+}
+
+const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
 function SignupForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -23,6 +35,30 @@ function SignupForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const widgetRendered = useRef(false);
+
+  const renderWidget = useCallback(() => {
+    if (!SITE_KEY || !window.turnstile || !turnstileRef.current || widgetRendered.current) return;
+    widgetRendered.current = true;
+    window.turnstile.render(turnstileRef.current, {
+      sitekey: SITE_KEY,
+      theme: "auto",
+      callback: (token: string) => setTurnstileToken(token),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (window.turnstile) renderWidget();
+  }, [renderWidget]);
+
+  const resetTurnstile = useCallback(() => {
+    if (window.turnstile && turnstileRef.current) {
+      window.turnstile.reset(turnstileRef.current);
+    }
+    setTurnstileToken("");
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -34,7 +70,12 @@ function SignupForm() {
       const res = await fetch("/api/v1/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, username, password }),
+        body: JSON.stringify({
+          email,
+          username,
+          password,
+          turnstileToken: turnstileToken || undefined,
+        }),
       });
       const data = await res.json();
 
@@ -48,10 +89,20 @@ function SignupForm() {
       setError("Network error.");
     } finally {
       setLoading(false);
+      resetTurnstile();
     }
   }
 
   return (
+    <>
+      {SITE_KEY && (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+          async
+          defer
+          onReady={renderWidget}
+        />
+      )}
     <Box
       sx={{
         minHeight: "100vh",
@@ -107,6 +158,11 @@ function SignupForm() {
                 autoComplete="new-password"
                 helperText="At least 8 characters."
               />
+              {SITE_KEY && (
+                <Box sx={{ display: "flex", justifyContent: "center" }}>
+                  <div ref={turnstileRef} />
+                </Box>
+              )}
               {error && <Alert severity="error">{error}</Alert>}
               {success && <Alert severity="success">{success}</Alert>}
               <Button
@@ -132,6 +188,7 @@ function SignupForm() {
         </Card>
       </Box>
     </Box>
+    </>
   );
 }
 
