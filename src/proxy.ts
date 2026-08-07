@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PRIMARY_DOMAIN, domainFromHost, isPlatformHost, normaliseHost } from "@/lib/domains";
+import {
+  APP_ASSOCIATION_PATHS,
+  composeForwardedTarget,
+  parseHttpUrl,
+  type DomainConfig,
+} from "@/lib/deeplink";
 
 /**
  * Paths that belong to the application shell rather than to short-link
@@ -53,6 +59,7 @@ const CUSTOM_DOMAIN_ALLOWED_API = [
   /^\/api\/v1\/links\/[^/]+\/unlock$/,
   /^\/api\/v1\/stats\/[^/]+$/,
   /^\/api\/internal\/resolve$/,
+  /^\/api\/internal\/domain-config$/,
 ];
 
 /**
@@ -69,6 +76,58 @@ function redirectToPrimary(request: NextRequest): NextResponse {
   // 308 rather than 307: the app shell is permanently at the primary domain,
   // and 308 preserves the method for any non-GET that lands here.
   return NextResponse.redirect(target, 308);
+}
+
+/**
+ * The origin every INTERNAL_SECRET-bearing fetch must be addressed to.
+ *
+ * Never `request.url`. On a custom domain the request's host is the *tenant's*
+ * hostname, resolved by DNS the tenant controls: point the A record at your own
+ * server, replay the request to Vercel with `Host: tenant.example`, and the edge
+ * hands `x-internal-secret` straight to you. The origin therefore has to come
+ * from something only the platform can set, which is VERCEL_URL (injected by
+ * Vercel, not by the request) with the primary domain as the fallback.
+ *
+ * Platform hosts are the one case that keeps using the request's own origin,
+ * because that origin is already platform-controlled and because nothing else
+ * works there: VERCEL_URL is unset under `pnpm dev`, and on a preview
+ * deployment the deployment URL can sit behind Vercel's deployment protection
+ * and 401 the internal call. The gate is `isPlatformHost`, never an arbitrary
+ * request host.
+ */
+function internalOrigin(request: NextRequest, host: string): string {
+  if (isPlatformHost(host)) return request.url;
+
+  const vercelHost = process.env.VERCEL_URL?.trim();
+  if (vercelHost) return `https://${vercelHost}`;
+  return `https://${PRIMARY_DOMAIN}`;
+}
+
+/**
+ * Reads a custom domain's deeplink configuration over the internal API.
+ *
+ * The proxy runs at the edge and cannot import Mongoose, so this mirrors the
+ * existing /api/internal/resolve call: platform-trusted origin, same
+ * INTERNAL_SECRET header. Any failure returns null, which means "behave exactly
+ * as a shortener domain does", so a cold start or a cache outage can never turn
+ * into a broken redirect.
+ */
+async function fetchDomainConfig(
+  origin: string,
+  domain: string
+): Promise<DomainConfig | null> {
+  const url = new URL("/api/internal/domain-config", origin);
+  url.searchParams.set("domain", domain);
+
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { "x-internal-secret": process.env.INTERNAL_SECRET || "" },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as DomainConfig;
+  } catch {
+    return null;
+  }
 }
 
 export async function proxy(request: NextRequest) {
@@ -88,6 +147,64 @@ export async function proxy(request: NextRequest) {
 
   // The domain every Link read on this request must be scoped to.
   const domain = domainFromHost(host);
+
+  // Origin for every internal call made below. Derived from the platform, not
+  // from the request: see internalOrigin.
+  const internalBase = internalOrigin(request, host);
+
+  // Deeplink configuration for this hostname, fetched at most once per request
+  // and only by the branches below that genuinely need it. An ordinary
+  // single-segment short link never reaches any of them, so the hot redirect
+  // path costs exactly what it did before.
+  //
+  // Multi-segment and .well-known requests do pay a lookup even on a
+  // shortener-mode domain, because the mode is only known once the config has
+  // been read. Both are paths that 404 today, and the answer is cached per
+  // hostname for 60s (in Redis, or in the process-local negative memo when
+  // Redis is down), so the cost is bounded rather than per-request.
+  let configPromise: Promise<DomainConfig | null> | undefined;
+  const loadDomainConfig = (): Promise<DomainConfig | null> => {
+    configPromise ??= fetchDomainConfig(internalBase, domain);
+    return configPromise;
+  };
+
+  // ── Association files (Universal Links / App Links) ──
+  //
+  // This runs before everything else because both paths would otherwise be
+  // killed further down: they contain a "." and a "/", which the keyword skip
+  // treats as "not a short link" and hands to Next, where they 404.
+  //
+  // Only ever on a custom host, only ever on a domain in `deeplink` mode, and
+  // only when the file is actually stored. A missing file falls through to
+  // today's 404 rather than being served as an empty body, because Apple's CDN
+  // caches whatever it first receives and an empty file un-verifies the app.
+  const associationFile = onCustomDomain ? APP_ASSOCIATION_PATHS[pathname] : undefined;
+  if (associationFile) {
+    const config = await loadDomainConfig();
+    if (config?.mode === "deeplink") {
+      const body = associationFile === "aasa" ? config.aasa : config.assetlinks;
+      if (body) {
+        // Served verbatim: the stored string is never parsed and re-stringified,
+        // since that reorders keys and Apple caches the first bytes it sees.
+        return new NextResponse(body, {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            // The body is bytes a customer uploaded. Without nosniff a browser
+            // is free to ignore the declared type and sniff it as HTML, which
+            // turns a stored association file into stored XSS on the tenant's
+            // own origin.
+            "x-content-type-options": "nosniff",
+            // Matched to the 60s config TTL rather than set higher. A suspended
+            // tenant that keeps serving its association files is the failure
+            // that matters here, and a cache outliving the TTL is exactly how
+            // that happens.
+            "cache-control": "public, max-age=60",
+          },
+        });
+      }
+    }
+  }
 
   if (onCustomDomain) {
     // A custom domain serves short links and nothing else. Anything belonging
@@ -113,9 +230,27 @@ export async function proxy(request: NextRequest) {
 
   // Check for preview suffix (keyword+)
   const isPreview = pathname.endsWith("+");
-  const keyword = isPreview
+  let keyword = isPreview
     ? pathname.slice(1, -1)
     : pathname.slice(1);
+
+  // Path left over after the keyword, forwarded onto the target only when the
+  // link opts in. Empty for every request that is not a deeplink lookup.
+  let extraPath = "";
+
+  // A deeplink domain resolves on the FIRST path segment and keeps the rest,
+  // so /publicMatchDetailScreen/42 matches the keyword `publicMatchDetailScreen`.
+  // Gated on the mode because on a shortener domain a multi-segment path must
+  // keep falling through to Next untouched: without the gate every existing
+  // multi-segment 404 would start hitting the resolve endpoint.
+  if (!isPreview && onCustomDomain && keyword.includes("/")) {
+    const config = await loadDomainConfig();
+    if (config?.mode === "deeplink") {
+      const slash = keyword.indexOf("/");
+      extraPath = keyword.slice(slash);
+      keyword = keyword.slice(0, slash);
+    }
+  }
 
   // Skip if keyword is empty or looks like a file
   if (!keyword || keyword.includes(".") || keyword.includes("/")) {
@@ -136,7 +271,7 @@ export async function proxy(request: NextRequest) {
   const countryCode = request.headers.get("x-vercel-ip-country") || "";
 
   // ── Resolve via internal API (MongoDB) ──
-  const resolveUrl = new URL("/api/internal/resolve", request.url);
+  const resolveUrl = new URL("/api/internal/resolve", internalBase);
   resolveUrl.searchParams.set("keyword", keyword);
   resolveUrl.searchParams.set("domain", domain);
 
@@ -172,7 +307,20 @@ export async function proxy(request: NextRequest) {
         return NextResponse.rewrite(passwordUrl);
       }
 
-      return NextResponse.redirect(data.url, data.statusCode || 302);
+      // Compose only what the link opted into. With both flags false (the
+      // model default, and therefore every link that exists today) this returns
+      // data.url unchanged, byte for byte. The host always comes from the
+      // resolved target and can never be influenced by the request. The path is
+      // a different matter: assigning to `URL.pathname` percent-decodes and
+      // applies dot-segment removal, so a segment is only additive once it has
+      // survived the decoded `.`/`..` check in composeForwardedTarget. Without
+      // that check `%2e%2e` walks straight out of the target's path prefix.
+      const target = composeForwardedTarget(data.url, {
+        extraPath: data.forwardPath === true ? extraPath : "",
+        search: data.forwardQuery === true ? request.nextUrl.search : "",
+      });
+
+      return NextResponse.redirect(target, data.statusCode || 302);
     } catch {
       // Network / timeout — retry once
       continue;
@@ -180,6 +328,21 @@ export async function proxy(request: NextRequest) {
   }
 
   if (genuineNotFound) {
+    // Catch-all: on a deeplink domain an unmatched keyword belongs to the app's
+    // marketing site, not to a 404 page. Validated as http(s) at the point of
+    // use rather than trusted from the database, so a malformed or non-http
+    // stored value degrades to the not-found rewrite instead of becoming an
+    // open redirect. Nothing from the request is composed onto it.
+    if (onCustomDomain) {
+      const config = await loadDomainConfig();
+      const fallback = config?.mode === "deeplink" ? parseHttpUrl(config.fallbackTarget) : null;
+      if (fallback) {
+        const fallbackRes = NextResponse.redirect(fallback.toString(), 302);
+        fallbackRes.headers.set("Cache-Control", "private, no-cache, no-store");
+        return fallbackRes;
+      }
+    }
+
     // Link confirmed missing / expired — show not-found
     const notFoundUrl = new URL("/not-found", request.url);
     const notFoundRes = NextResponse.rewrite(notFoundUrl);
