@@ -60,7 +60,7 @@ const DOMAIN_MODES: DomainMode[] = ["shortener", "deeplink"];
 
 // Generous cap: real association files run under 2 KB. 128 KB just guards
 // against abuse without ever being a realistic ceiling for a legitimate file.
-const APP_LINKS_MAXLENGTH = 128 * 1024;
+export const APP_LINKS_MAXLENGTH = 128 * 1024;
 
 const DomainSchema = new Schema<IDomain>(
   {

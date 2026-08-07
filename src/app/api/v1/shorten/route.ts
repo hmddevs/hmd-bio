@@ -36,7 +36,16 @@ export async function POST(request: NextRequest) {
       return apiError(parsed.error.issues[0].message, 400);
     }
 
-    const { url, keyword: customKeyword, title, domain, turnstileToken } = parsed.data;
+    const {
+      url,
+      keyword: customKeyword,
+      title,
+      domain,
+      targets,
+      forwardPath,
+      forwardQuery,
+      turnstileToken,
+    } = parsed.data;
 
     // Identity must be established before Turnstile is decided: an authenticated
     // caller (session or API key) is already accountable for their requests, so
@@ -122,6 +131,12 @@ export async function POST(request: NextRequest) {
         statusCode: 301,
         owner: user?.id ?? null,
         createdVia: "api",
+        // Spread rather than assigned, so a caller that omits these leaves the
+        // model's own defaults ([] and false) to apply and the created document
+        // is identical to one written before deeplinks existed.
+        ...(targets !== undefined ? { targets } : {}),
+        ...(forwardPath !== undefined ? { forwardPath } : {}),
+        ...(forwardQuery !== undefined ? { forwardQuery } : {}),
       });
     } catch (err) {
       // Two requests raced the pre-check and the unique (domain, keyword) index

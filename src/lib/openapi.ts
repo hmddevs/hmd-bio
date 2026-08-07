@@ -46,7 +46,10 @@ export const openApiSpec = {
           "Creates a short link. A valid Cloudflare Turnstile token is required unless " +
           "TURNSTILE_SECRET_KEY is unset (dev only). If the caller has a session cookie " +
           "or a valid `Bearer hmd_...` API key, the link is attributed to that user as its owner; " +
-          "otherwise it is created anonymously.",
+          "otherwise it is created anonymously. Accepts the deeplink fields (`targets`, " +
+          "`forwardPath`, `forwardQuery`) on creation, but the 201 response shape below is " +
+          "deliberately unchanged; read them back with GET /api/v1/links/{keyword} or " +
+          "PUT /api/v1/links/{keyword}.",
         security: [],
         requestBody: {
           required: true,
@@ -330,6 +333,9 @@ export const openApiSpec = {
       put: {
         tags: ["Links"],
         summary: "Update a link",
+        description:
+          "Returns the whole updated document, so the deeplink fields (`targets`, `forwardPath`, " +
+          "`forwardQuery`) appear in the response even though POST /api/v1/shorten's response does not.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { $ref: "#/components/parameters/KeywordPath" },
@@ -1290,6 +1296,24 @@ export const openApiSpec = {
                     { type: "object", properties: { data: { $ref: "#/components/schemas/Domain" } } },
                   ],
                 },
+                example: {
+                  success: true,
+                  statusCode: 200,
+                  data: {
+                    hostname: "go.example.com",
+                    status: "active",
+                    mode: "deeplink",
+                    appLinks: { aasa: '{"applinks":{"details":[]}}', assetlinks: null },
+                    fallbackTarget: "https://example.com/download",
+                    verifiedAt: "2026-07-01T09:00:00.000Z",
+                    linkCount: 12,
+                    failureReason: null,
+                    createdAt: "2026-06-20T14:32:00.000Z",
+                    updatedAt: "2026-07-02T10:00:00.000Z",
+                    dnsRecord: null,
+                    pointingRecord: null,
+                  },
+                },
               },
             },
           },
@@ -1313,6 +1337,86 @@ export const openApiSpec = {
             },
           },
           "429": { $ref: "#/components/responses/RateLimited" },
+        },
+      },
+      patch: {
+        tags: ["Domains"],
+        summary: "Update a domain's deeplink configuration",
+        description:
+          "Sets `mode`, the two association files, and the fallback target for a deeplink domain. " +
+          "Every field is optional and an absent field is left unchanged, so a client only ever sends " +
+          "what it means to change; sending an empty body is a no-op. Explicit `null` clears a value, " +
+          "which is a different thing from omitting it. `appLinks` is itself partial: sending only " +
+          "`aasa` leaves `assetlinks` untouched, and vice versa: the two files are never overwritten " +
+          "as a pair. May be called on a domain that is not yet `active`; nothing is served until it " +
+          "reaches that status regardless.",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        parameters: [{ $ref: "#/components/parameters/HostnamePath" }],
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/DeeplinkConfigRequest" },
+              example: {
+                mode: "deeplink",
+                appLinks: { aasa: '{"applinks":{"details":[]}}' },
+                fallbackTarget: "https://example.com/download",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Updated domain",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    { type: "object", properties: { data: { $ref: "#/components/schemas/DeeplinkConfigResult" } } },
+                  ],
+                },
+                example: {
+                  success: true,
+                  statusCode: 200,
+                  data: {
+                    hostname: "go.example.com",
+                    status: "active",
+                    mode: "deeplink",
+                    appLinks: { aasa: '{"applinks":{"details":[]}}', assetlinks: null },
+                    fallbackTarget: "https://example.com/download",
+                    updatedAt: "2026-07-02T10:00:00.000Z",
+                  },
+                },
+              },
+            },
+          },
+          "400": {
+            description:
+              "Invalid hostname, malformed JSON body, a body larger than 768 KB, or the request " +
+              "failed schema validation: an oversized association file, `aasa` not a JSON object " +
+              "with at least one of `applinks`/`webcredentials`/`appclips`, `assetlinks` not a JSON " +
+              "array, or `fallbackTarget` not an absolute http(s) URL. The error message names the " +
+              "first issue found, not every issue. Note that an accepted `fallbackTarget` is stored " +
+              "in its normalised form, so the value returned may differ from the one sent.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 400, error: "apple-app-site-association must be a JSON object" },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": {
+            description: "No domain with that hostname owned by the caller",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 404, error: "Domain not found" },
+              },
+            },
+          },
+          "429": { $ref: "#/components/responses/RateLimited" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
       delete: {
@@ -2048,6 +2152,23 @@ export const openApiSpec = {
             type: "string",
             description: "Cloudflare Turnstile token, required unless dev mode",
           },
+          targets: {
+            allOf: [{ $ref: "#/components/schemas/LinkTargets" }],
+            description:
+              "Per-platform destination overrides for a deeplink domain. Inert on a shortener domain " +
+              "and inert when omitted: a link created without `targets` resolves through `url` exactly " +
+              "as every link always has.",
+          },
+          forwardPath: {
+            type: "boolean",
+            default: false,
+            description: "Append the visitor's path to the resolved target URL. Only meaningful alongside `targets`.",
+          },
+          forwardQuery: {
+            type: "boolean",
+            default: false,
+            description: "Append the visitor's query string to the resolved target URL. Only meaningful alongside `targets`.",
+          },
         },
       },
       ShortenResult: {
@@ -2082,6 +2203,16 @@ export const openApiSpec = {
           ogTitle: { type: "string", maxLength: 200, nullable: true },
           ogDescription: { type: "string", maxLength: 500, nullable: true },
           ogImage: { type: "string", format: "uri", nullable: true },
+          targets: {
+            allOf: [{ $ref: "#/components/schemas/LinkTargets" }],
+            description:
+              "Replaces the whole set of platform overrides; there is no per-platform partial update, " +
+              "unlike PATCH /api/v1/domains/{hostname}'s `appLinks`. Omitted leaves the stored value " +
+              "alone. An explicit empty array clears every override, returning the link to resolving " +
+              "through `url` alone.",
+          },
+          forwardPath: { type: "boolean", description: "Append the visitor's path to the resolved target URL." },
+          forwardQuery: { type: "boolean", description: "Append the visitor's query string to the resolved target URL." },
         },
       },
       Link: {
@@ -2101,8 +2232,31 @@ export const openApiSpec = {
           ogImage: { type: "string", nullable: true },
           owner: { type: "string", nullable: true, description: "Owning user's id, or null for anonymously created links" },
           createdVia: { type: "string", enum: ["form", "api", "bulk", "dashboard"] },
+          targets: {
+            allOf: [{ $ref: "#/components/schemas/LinkTargets" }],
+            description: "Per-platform destination overrides. Empty on a link that has never been configured for deeplinking.",
+          },
+          forwardPath: { type: "boolean", description: "Whether the visitor's path is appended to the resolved target URL. Defaults to false." },
+          forwardQuery: { type: "boolean", description: "Whether the visitor's query string is appended to the resolved target URL. Defaults to false." },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      LinkTargets: {
+        type: "array",
+        maxItems: 3,
+        description:
+          "Per-platform destination overrides, resolved against the visitor's platform when the " +
+          "link's domain is in `deeplink` mode. At most one entry per platform; a duplicate platform " +
+          "is rejected. Each `url` follows the same absolute http(s) rules as the top-level `url` " +
+          "field: no `javascript:`/`data:` schemes, no userinfo, 2048 characters max.",
+        items: {
+          type: "object",
+          required: ["platform", "url"],
+          properties: {
+            platform: { type: "string", enum: ["ios", "android", "desktop"] },
+            url: { type: "string", format: "uri" },
+          },
         },
       },
       Click: {
@@ -2304,6 +2458,13 @@ export const openApiSpec = {
       },
       Domain: {
         type: "object",
+        description:
+          "A claimed hostname. `mode` decides what the domain is for: `shortener` (the default) " +
+          "resolves short links created on it exactly as hmd.bio does; `deeplink` instead serves " +
+          "/.well-known/apple-app-site-association and /.well-known/assetlinks.json verbatim from " +
+          "`appLinks.aasa` and `appLinks.assetlinks`, so iOS and Android can fetch those files " +
+          "straight from the domain to verify that an app is allowed to claim its links. Configure a " +
+          "deeplink domain with PATCH /api/v1/domains/{hostname}.",
         properties: {
           hostname: { type: "string" },
           status: {
@@ -2314,6 +2475,44 @@ export const openApiSpec = {
               "provisioning: ownership proven, attached to Vercel, DNS/certificate not yet ready. " +
               "active: serving traffic. failed: last verification attempt failed (see failureReason). " +
               "suspended: disabled by an admin.",
+          },
+          mode: {
+            type: "string",
+            enum: ["shortener", "deeplink"],
+            default: "shortener",
+            description:
+              "Set via PATCH /api/v1/domains/{hostname}. Association files may be configured while the " +
+              "domain is still pending or provisioning, but nothing is served under `mode: \"deeplink\"` " +
+              "until `status` reaches `active`.",
+          },
+          appLinks: {
+            type: "object",
+            nullable: true,
+            description:
+              "The two mobile app association files, stored and served as the exact bytes supplied. " +
+              "Only relevant when `mode` is `deeplink`.",
+            properties: {
+              aasa: {
+                type: "string",
+                nullable: true,
+                description:
+                  "Contents of apple-app-site-association: a JSON object containing at least one of " +
+                  "`applinks`, `webcredentials`, or `appclips`. Capped at 128 KB measured in UTF-8 bytes.",
+              },
+              assetlinks: {
+                type: "string",
+                nullable: true,
+                description: "Contents of assetlinks.json: a JSON array of statement objects. Capped at 128 KB measured in UTF-8 bytes.",
+              },
+            },
+          },
+          fallbackTarget: {
+            type: "string",
+            format: "uri",
+            nullable: true,
+            description:
+              "Where an unmatched path on a deeplink domain is sent, instead of the platform's default " +
+              "not-found page. Absolute http(s) URL, no userinfo, 2048 characters max.",
           },
           verifiedAt: { type: "string", format: "date-time", nullable: true },
           linkCount: { type: "integer" },
@@ -2329,6 +2528,68 @@ export const openApiSpec = {
             nullable: true,
             description: "The A/CNAME record that routes traffic to the hostname. Null once the domain is active; otherwise still required.",
           },
+          updatedAt: {
+            type: "string",
+            format: "date-time",
+            description: "Same value PATCH /api/v1/domains/{hostname} returns, so a client can share one type across both calls.",
+          },
+        },
+      },
+      DeeplinkConfigRequest: {
+        type: "object",
+        description:
+          "Every field optional; an absent field is left unchanged and an empty body is a no-op. " +
+          "Explicit `null` on a nullable field clears it, which is not the same as omitting the field.",
+        properties: {
+          mode: { type: "string", enum: ["shortener", "deeplink"] },
+          appLinks: {
+            type: "object",
+            description:
+              "Partial: sending only `aasa` leaves the stored `assetlinks` untouched, and vice versa. " +
+              "There is no way to update both in one call while clearing neither; send both explicitly.",
+            properties: {
+              aasa: {
+                type: "string",
+                nullable: true,
+                description:
+                  "Must be valid JSON, parse to an object (not an array), and contain at least one of " +
+                  "`applinks`, `webcredentials`, or `appclips`. At most 128 KB measured in UTF-8 bytes. " +
+                  "Stored and served as the exact string supplied, so keys are never reordered.",
+              },
+              assetlinks: {
+                type: "string",
+                nullable: true,
+                description:
+                  "Must be valid JSON that parses to an array of objects. At most 128 KB measured in " +
+                  "UTF-8 bytes. Stored and served as the exact string supplied.",
+              },
+            },
+          },
+          fallbackTarget: {
+            type: "string",
+            nullable: true,
+            description: "Absolute http or https URL, no userinfo, 2048 characters max.",
+          },
+        },
+      },
+      DeeplinkConfigResult: {
+        type: "object",
+        properties: {
+          hostname: { type: "string" },
+          status: {
+            type: "string",
+            enum: ["pending_dns", "verifying", "provisioning", "active", "failed", "suspended"],
+          },
+          mode: { type: "string", enum: ["shortener", "deeplink"] },
+          appLinks: {
+            type: "object",
+            properties: {
+              aasa: { type: "string", nullable: true },
+              assetlinks: { type: "string", nullable: true },
+            },
+          },
+          fallbackTarget: { type: "string", format: "uri", nullable: true },
+          updatedAt: { type: "string", format: "date-time" },
         },
       },
       DomainVerifyResult: {

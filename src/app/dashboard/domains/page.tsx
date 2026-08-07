@@ -22,11 +22,14 @@ import {
   DialogContent,
   DialogActions,
   Alert,
+  ToggleButtonGroup,
+  ToggleButton,
 } from "@mui/material";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import DeleteIcon from "@mui/icons-material/Delete";
+import LinkIcon from "@mui/icons-material/Link";
 import { captureError } from "@/lib/errors";
 
 interface DnsRecord {
@@ -197,6 +200,277 @@ function DnsSteps({
   );
 }
 
+type DomainMode = "shortener" | "deeplink";
+
+/** The deeplink-relevant fields for a domain, as last confirmed by the API. */
+interface DeeplinkConfig {
+  mode: DomainMode;
+  appLinks: { aasa: string | null; assetlinks: string | null };
+  fallbackTarget: string | null;
+  updatedAt: string;
+}
+
+/**
+ * Configuration form for a domain's deeplink role: mode, the two association
+ * files, and the fallback target.
+ *
+ * On open, the dialog fetches the domain's current state from
+ * GET /api/v1/domains/{hostname}, which is the authoritative source for these
+ * fields. The form is neither editable nor saveable until that fetch
+ * resolves: a save built on assumed-blank values could silently revert an
+ * already-configured deeplink domain back to shortener mode, which is
+ * exactly the bug this replaces.
+ */
+function DeeplinkDialog({
+  hostname,
+  onClose,
+}: {
+  hostname: string;
+  onClose: () => void;
+}) {
+  const [mode, setMode] = useState<DomainMode>("shortener");
+  const [modeTouched, setModeTouched] = useState(false);
+  const [aasa, setAasa] = useState("");
+  const [aasaTouched, setAasaTouched] = useState(false);
+  const [assetlinks, setAssetlinks] = useState("");
+  const [assetlinksTouched, setAssetlinksTouched] = useState(false);
+  const [fallbackTarget, setFallbackTarget] = useState("");
+  const [fallbackTouched, setFallbackTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError("");
+    (async () => {
+      try {
+        const res = await fetch(`/api/v1/domains/${encodeURIComponent(hostname)}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setLoadError(asText(json.error, "Could not load deeplink configuration"));
+          return;
+        }
+        const config: DeeplinkConfig = {
+          mode: json.data.mode,
+          appLinks: {
+            aasa: json.data.appLinks?.aasa ?? null,
+            assetlinks: json.data.appLinks?.assetlinks ?? null,
+          },
+          fallbackTarget: json.data.fallbackTarget ?? null,
+          updatedAt: json.data.updatedAt,
+        };
+        setMode(config.mode);
+        setAasa(config.appLinks.aasa ?? "");
+        setAssetlinks(config.appLinks.assetlinks ?? "");
+        setFallbackTarget(config.fallbackTarget ?? "");
+        setModeTouched(false);
+        setAasaTouched(false);
+        setAssetlinksTouched(false);
+        setFallbackTouched(false);
+      } catch {
+        if (!cancelled) setLoadError("Network error. Please try again.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hostname]);
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    try {
+      const body: Record<string, unknown> = {};
+      if (modeTouched) body.mode = mode;
+      const appLinks: Record<string, unknown> = {};
+      if (aasaTouched) appLinks.aasa = aasa.trim() === "" ? null : aasa;
+      if (assetlinksTouched) appLinks.assetlinks = assetlinks.trim() === "" ? null : assetlinks;
+      if (Object.keys(appLinks).length > 0) body.appLinks = appLinks;
+      if (fallbackTouched) {
+        body.fallbackTarget = fallbackTarget.trim() === "" ? null : fallbackTarget.trim();
+      }
+
+      const res = await fetch(`/api/v1/domains/${encodeURIComponent(hostname)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(asText(json.error, "Could not save deeplink configuration"));
+        return;
+      }
+      const config: DeeplinkConfig = {
+        mode: json.data.mode,
+        appLinks: {
+          aasa: json.data.appLinks?.aasa ?? null,
+          assetlinks: json.data.appLinks?.assetlinks ?? null,
+        },
+        fallbackTarget: json.data.fallbackTarget ?? null,
+        updatedAt: json.data.updatedAt,
+      };
+      setMode(config.mode);
+      setAasa(config.appLinks.aasa ?? "");
+      setAssetlinks(config.appLinks.assetlinks ?? "");
+      setFallbackTarget(config.fallbackTarget ?? "");
+      setModeTouched(false);
+      setAasaTouched(false);
+      setAssetlinksTouched(false);
+      setFallbackTouched(false);
+      setSaved(true);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open fullWidth maxWidth="sm" onClose={onClose}>
+      <DialogTitle>Deeplinks for {hostname}</DialogTitle>
+      <DialogContent>
+        {loading ? (
+          <Box sx={{ textAlign: "center", py: 4 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : loadError ? (
+          <Alert severity="error">{loadError}</Alert>
+        ) : (
+          <>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          A shortener domain redirects every keyword to its target URL. A deeplink domain
+          instead opens links straight inside your iOS or Android app, when the visitor has
+          it installed, and only falls back to a browser otherwise.
+        </Typography>
+
+        <ToggleButtonGroup
+          value={mode}
+          exclusive
+          size="small"
+          onChange={(_, next) => {
+            if (next) {
+              setMode(next);
+              setModeTouched(true);
+            }
+          }}
+          sx={{ mb: 2 }}
+          aria-label="Domain mode"
+        >
+          <ToggleButton value="shortener" sx={{ textTransform: "none" }}>
+            Shortener
+          </ToggleButton>
+          <ToggleButton value="deeplink" sx={{ textTransform: "none" }}>
+            Deeplink
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        {mode === "deeplink" && (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              iOS and Android verify that this domain belongs to your app by fetching two
+              files directly from it, over HTTPS, before your app is allowed to claim its
+              links. Paste each file exactly as supplied by whoever manages your app: do not
+              hand-edit them here, since a single misplaced character will fail
+              verification silently.
+            </Typography>
+
+            <TextField
+              id="deeplink-aasa"
+              label="apple-app-site-association"
+              placeholder='{"applinks": {"details": [...]}}'
+              value={aasa}
+              onChange={(e) => {
+                setAasa(e.target.value);
+                setAasaTouched(true);
+              }}
+              multiline
+              minRows={5}
+              maxRows={12}
+              fullWidth
+              slotProps={{
+                htmlInput: {
+                  style: { fontFamily: "var(--font-geist-mono), monospace", fontSize: 13 },
+                },
+              }}
+              helperText="Served at /.well-known/apple-app-site-association. Leave blank if this domain does not need iOS Universal Links."
+            />
+
+            <TextField
+              id="deeplink-assetlinks"
+              label="assetlinks.json"
+              placeholder='[{"relation": ["delegate_permission/common.handle_all_urls"], "target": {...}}]'
+              value={assetlinks}
+              onChange={(e) => {
+                setAssetlinks(e.target.value);
+                setAssetlinksTouched(true);
+              }}
+              multiline
+              minRows={5}
+              maxRows={12}
+              fullWidth
+              slotProps={{
+                htmlInput: {
+                  style: { fontFamily: "var(--font-geist-mono), monospace", fontSize: 13 },
+                },
+              }}
+              helperText="Served at /.well-known/assetlinks.json. Leave blank if this domain does not need Android App Links."
+            />
+
+            <Typography variant="caption" color="text.secondary">
+              Apple caches whatever it first fetches from this domain on its own CDN. A
+              change here can take some time to reach every device, so an error is not
+              instantly fixable once Apple has cached a bad file: check the file carefully
+              before saving.
+            </Typography>
+
+            <TextField
+              id="deeplink-fallback"
+              label="Fallback URL"
+              placeholder="https://example.com/app"
+              value={fallbackTarget}
+              onChange={(e) => {
+                setFallbackTarget(e.target.value);
+                setFallbackTouched(true);
+              }}
+              fullWidth
+              size="small"
+              helperText="Where a visitor lands if the path they followed does not match any of your links. Recommended for a deeplink domain, so unmatched paths still lead somewhere sensible."
+            />
+          </Box>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+        {saved && !error && (
+          <Alert severity="success" sx={{ mt: 2 }} onClose={() => setSaved(false)}>
+            Saved.
+          </Alert>
+        )}
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+        <Button variant="contained" onClick={handleSave} disabled={saving || loading || !!loadError}>
+          {saving ? <CircularProgress size={20} /> : "Save"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export default function DomainsPage() {
   const [domains, setDomains] = useState<DomainItem[]>([]);
   const [limit, setLimit] = useState(3);
@@ -219,6 +493,8 @@ export default function DomainsPage() {
   const [deleteError, setDeleteError] = useState("");
   const [deleteLinkCount, setDeleteLinkCount] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [deeplinkTarget, setDeeplinkTarget] = useState<string | null>(null);
 
   const loadDomains = useCallback(async () => {
     setLoading(true);
@@ -576,6 +852,15 @@ export default function DomainsPage() {
           Copy DNS record
         </MenuItem>
         <MenuItem
+          onClick={() => {
+            if (menuAnchor) setDeeplinkTarget(menuAnchor.hostname);
+            setMenuAnchor(null);
+          }}
+        >
+          <LinkIcon fontSize="small" sx={{ mr: 1 }} />
+          Deeplinks
+        </MenuItem>
+        <MenuItem
           sx={{ color: "error.main" }}
           onClick={() => {
             if (menuAnchor) {
@@ -636,6 +921,10 @@ export default function DomainsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {deeplinkTarget && (
+        <DeeplinkDialog hostname={deeplinkTarget} onClose={() => setDeeplinkTarget(null)} />
+      )}
     </Box>
   );
 }
