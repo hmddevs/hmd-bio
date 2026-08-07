@@ -105,15 +105,51 @@ live key behaves differently after this change.
 An administrator can decrypt a visitor's IP and nothing records it. That cannot
 sit behind a signed DPA.
 
-- [ ] Audit log of administrative access to decrypted IPs, and of destructive
-      admin actions. Who, what, when. Never the decrypted value itself.
+- [x] Audit log of administrative access to decrypted IPs, and of destructive
+      admin actions. Who, what, when. Never the decrypted value itself. Shipped
+      in #38, which replaced #35 (main had moved twice underneath it).
+
+Three things review caught that would have made the log a claim rather than a
+control, all fixed before merge:
+
+- [x] The 400-day TTL it advertises did not exist. `db.ts` sets
+      `autoIndex: false` because index creation belongs to `scripts/`, so a
+      declared `Schema.index()` is inert in production. Retention is the part a
+      DPA rests on. `scripts/migrate-audit-log-indexes.ts` now creates the
+      declared indexes and proves the TTL by exact key pattern and period.
+      **Run against production on 2026-08-08**, on an empty collection, so the
+      TTL could not delete anything on creation: four indexes created,
+      retention verified at 34,560,000s. Generalises: every new schema index
+      needs a matching migration in the same PR.
+- [x] The clicks route failed open. The audit write cannot fail an admin
+      *write*, correctly, since by then the action has committed. That does not
+      transfer to a *read*: nothing had been disclosed yet, so it now returns
+      503 and no rows unless the entry was written.
+- [x] Admin edits to a link were unaudited while deletions were. Both decide
+      through one predicate now, rather than restating the ownership test,
+      which is how they came to differ.
 
 ## P3. Click retention
 
 Retained indefinitely, no configurable policy, no deletion path.
 
-- [ ] A defined default retention period, enforced automatically.
+Design changed before any code was written, on the production numbers: a
+12-month TTL would delete 86,427 of 88,517 clicks, 98% of all analytics, and
+24 months still removes 58%. Glass asked where click data is stored and for how
+long, which is a question about retention of *personal* data. Destroying 98% of
+the click history to answer it would be answering a privacy question by
+deleting the product. So P3 ages out the personal fields (encrypted IP, IV,
+user agent) and keeps the anonymous row (timestamp, country, browser, OS,
+keyword). That is what data minimisation actually asks for. Outright deletion
+stays available as a per-customer option.
+
+- [ ] Anonymise the personal fields on a schedule, keeping the analytics row.
 - [ ] Deletion available without contacting support.
+- [ ] Do NOT create the TTL index as part of shipping. A TTL acts on existing
+      documents the moment it exists, so merging one would silently delete
+      86,000 rows on deploy. Build the mechanism; the period stays Umut's to
+      set. The audit log's own 400 days was picked assuming P3 landed at twelve
+      months, so it is now a standalone choice and revisitable.
 
 ## P4. Confirm the redirect rate-limit key
 
@@ -122,7 +158,38 @@ header is ever empty the key collapses to one shared bucket of 120/min across
 all visitors, which would throttle a booking peak. Not yet proven under
 production conditions, and it affects every customer, not only Glass.
 
-- [ ] Establish which happens, and fix it if the key can collapse.
+- [x] Settled, and it does not collapse. Measured on the ciphertext lengths of
+      18 production clicks, which reveal plaintext length without the key: all
+      12 to 13 characters, so all real IPv4 addresses and none of the 46-hex
+      shape a literal "unknown" would produce. The redirect limiter is genuinely
+      per-visitor.
+
+## Open, not gating onboarding
+
+- [ ] **Error capture is off, application-wide.** There was no instrumentation
+      file, so `sentry.server.config.ts` was imported by nothing, `Sentry.init`
+      never ran in the Node or edge runtime, and every server-side
+      `captureError` in the codebase was silently discarded.
+      `withSentryConfig({ silent: true })` suppressed the SDK's own warning
+      about exactly that. `src/instrumentation.ts` (#38) fixes the code half,
+      but there is no Sentry variable of any kind in the Vercel production
+      environment, so capture stays inert until a DSN is set. Needs
+      `SENTRY_DSN`, plus `NEXT_PUBLIC_SENTRY_DSN` for browser capture, since a
+      bare `SENTRY_DSN` is not exposed to client bundles. Umut's call; deferred
+      deliberately on 2026-08-08. Until then, verify nothing by "it is reported
+      to Sentry".
+- [ ] The audit log has no read path. Nothing in the app or API queries it, so
+      answering a DPA question today means direct database access. The
+      `subjectType`/`subjectIds`/`createdAt` index exists for that surface.
+- [ ] `Link.url` still accepts `javascript:` and `data:` via Zod's
+      `z.string().url()`, and deeplinks made it the universal fallback.
+      Tightening it breaks any customer already storing a custom-scheme URL, so
+      it needs a production data check first.
+- [ ] `INTERNAL_SECRET` rotation. If any customer-owned domain has ever been
+      `active`, treat the secret as disclosed.
+- [ ] Nothing caps how many API keys an account may hold, so N keys can
+      collectively reach the account rate-limit ceiling. Per-key isolation
+      bounds one key, not all keys together.
 
 ## Not gating, but promised in writing
 
