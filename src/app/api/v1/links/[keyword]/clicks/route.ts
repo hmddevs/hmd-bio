@@ -5,7 +5,7 @@ import { Click } from "@/models/Click";
 import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth, requireOwnership } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { domainFromQuery } from "@/lib/domain-access";
 
@@ -22,7 +22,7 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`clicks-list:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("clicks-list", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }
@@ -46,11 +46,15 @@ export async function GET(
       return apiError("Link not found", 404);
     }
 
-    const forbidden = requireOwnership(link, session);
+    const forbidden = requireOwnership(link, session, { notFoundMessage: "Link not found" });
     if (forbidden) return forbidden;
 
     const [clicks, total] = await Promise.all([
       Click.find({ domain, keyword })
+        // The encrypted visitor address and its IV never leave this server by
+        // this route. Decryption is an admin-only path with its own audit, and
+        // the sibling link routes all carry the same projection.
+        .select("-ipRaw -ipIv")
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)

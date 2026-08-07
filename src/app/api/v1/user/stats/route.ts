@@ -6,6 +6,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { captureError } from "@/lib/errors";
 import { requireAuth } from "@/lib/api-auth";
 import { buildShortUrl } from "@/lib/domains";
+import { domainScopeFilter } from "@/lib/api-key-scope";
 
 const TOP_LINKS_LIMIT = 5;
 const TOP_COUNTRIES_LIMIT = 5;
@@ -23,7 +24,12 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const links = await Link.find({ owner: session.user.id })
+    // Aggregates are built from this one query, so scoping it here scopes the
+    // totals, the top-links list and the click trends together.
+    const links = await Link.find({
+      owner: session.user.id,
+      ...domainScopeFilter(session.access),
+    })
       .select("domain keyword url title clicks")
       .lean();
 

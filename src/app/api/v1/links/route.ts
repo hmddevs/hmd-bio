@@ -4,16 +4,17 @@ import { Link } from "@/models/Link";
 import { linksQuerySchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { buildShortUrl } from "@/lib/domains";
+import { accessPermitsDomain, domainScopeFilter } from "@/lib/api-key-scope";
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`links-list:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("links-list", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }
@@ -43,8 +44,26 @@ export async function GET(request: NextRequest) {
     // an absent `domain` lists across every domain the caller owns, which is
     // what a dashboard needs. Ownership is already enforced by `filter.owner`,
     // so the wider default leaks nothing.
-    if (domain) {
+    //
+    // On top of that, a domain-restricted key is narrowed to its own domains.
+    // The two conditions are intersected rather than one overwriting the
+    // other: asking
+    // for a domain outside the key's scope must return nothing, not quietly
+    // return every domain the key does cover, which would be a confusing answer
+    // to a question the caller did not ask. Unrestricted callers, meaning every
+    // session and every legacy key, take the first branch and issue exactly the
+    // query they did before.
+    if (session.access.domains === null) {
+      if (domain) filter.domain = domain;
+    } else if (!domain) {
+      Object.assign(filter, domainScopeFilter(session.access));
+    } else if (accessPermitsDomain(session.access, domain)) {
       filter.domain = domain;
+    } else {
+      // Deliberately an empty page rather than a 403: consistent with the
+      // 404-not-403 posture elsewhere, this does not confirm that the domain
+      // exists or that the caller owns links on it.
+      filter.domain = { $in: [] };
     }
 
     if (search) {

@@ -5,7 +5,7 @@ import { Click } from "@/models/Click";
 import { editLinkSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth, requireOwnership } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { isReservedKeyword } from "@/lib/utils";
 import { domainFromQuery } from "@/lib/domain-access";
@@ -20,7 +20,7 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`links-keyword:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("links-keyword", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }
@@ -38,7 +38,7 @@ export async function GET(
     return apiError("Link not found", 404);
   }
 
-  const forbidden = requireOwnership(link, session);
+  const forbidden = requireOwnership(link, session, { notFoundMessage: "Link not found" });
   if (forbidden) return forbidden;
 
   return apiSuccess({ ...link, shortUrl: buildShortUrl(link.domain, link.keyword) });
@@ -52,7 +52,7 @@ export async function PUT(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`links-keyword:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("links-keyword", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }
@@ -83,7 +83,7 @@ export async function PUT(
       return apiError("Link not found", 404);
     }
 
-    const forbidden = requireOwnership(existing, session);
+    const forbidden = requireOwnership(existing, session, { notFoundMessage: "Link not found" });
     if (forbidden) return forbidden;
 
     const updates: Record<string, unknown> = {};
@@ -166,7 +166,7 @@ export async function DELETE(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`links-keyword:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("links-keyword", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }
@@ -182,7 +182,7 @@ export async function DELETE(
     return apiError("Link not found", 404);
   }
 
-  const forbidden = requireOwnership(existing, session);
+  const forbidden = requireOwnership(existing, session, { notFoundMessage: "Link not found" });
   if (forbidden) return forbidden;
 
   await Link.deleteOne({ domain, keyword });

@@ -14,6 +14,7 @@ import { isReservedPathPrefix, startsWithMatcherExcludedName } from "@/lib/reser
 // One definition of "a protocol we are willing to redirect to", shared with the
 // public shorten route rather than restated for the sync webhook.
 import { isAllowedProtocol, isReservedKeyword } from "@/lib/utils";
+import { API_KEY_SCOPES } from "@/lib/api-key-scope";
 
 // --- Hostname primitives -------------------------------------------------
 // Defined first because the link schemas below carry a `domain` field.
@@ -395,8 +396,44 @@ export const syncUpdateClicksSchema = z.object({
   clicks: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 });
 
+/**
+ * Ceiling on how many domains one key may be confined to. Generous relative to
+ * the per-user domain cap, and only here to bound the stored array.
+ */
+const MAX_KEY_DOMAINS = 20;
+
 export const apiKeySchema = z.object({
   label: z.string().min(1).max(100).default("Default"),
+  /**
+   * Omitted means `write`, which is what every key granted before scoping
+   * existed. Defaulting to `read` would be safer in isolation but would change
+   * the behaviour of existing clients that POST to this endpoint with only a
+   * label, so the safe default is applied in the dashboard instead, where the
+   * choice is visible.
+   */
+  scope: z.enum(API_KEY_SCOPES).default("write"),
+  /**
+   * Hostnames the key is confined to. Omitted or empty means unrestricted.
+   * Each entry is validated as a hostname here; that it actually belongs to
+   * the caller is checked against the database by the route, since this schema
+   * cannot know who is calling.
+   */
+  domains: z
+    .array(hostnameSyntaxSchema)
+    .max(MAX_KEY_DOMAINS, `A key may be limited to at most ${MAX_KEY_DOMAINS} domains`)
+    .optional(),
+  /**
+   * ISO 8601 instant. Must be in the future: an expiry already in the past
+   * would mint a key that is dead on arrival, which is a mistake rather than
+   * an intent.
+   */
+  expiresAt: z
+    .string()
+    .datetime({ offset: true })
+    .refine((value) => new Date(value).getTime() > Date.now(), {
+      message: "Expiry must be in the future",
+    })
+    .optional(),
 });
 
 export const signupSchema = z.object({
