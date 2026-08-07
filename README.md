@@ -12,6 +12,42 @@ A URL shortener with owner dashboards, click analytics, custom domains, a REST A
 
 **Live at [hmd.bio](https://hmd.bio)** · **API reference at [hmd.bio/docs](https://hmd.bio/docs)**
 
+## Building on the API with an AI tool
+
+The whole API is published in a form coding agents can read directly, so you should not need to paste documentation by hand.
+
+| File | What it is |
+|------|-----------|
+| **[hmd.bio/llms-full.txt](https://hmd.bio/llms-full.txt)** | Every endpoint, parameter, schema and response in one self-contained markdown file. Generated from the OpenAPI spec on each request, so it cannot drift. Point your agent at this one |
+| [hmd.bio/llms.txt](https://hmd.bio/llms.txt) | The short index, following the [llms.txt](https://llmstxt.org) convention. Use it when you want the map rather than the territory |
+| [hmd.bio/api/docs](https://hmd.bio/api/docs) | The raw OpenAPI 3 specification as JSON, if your tooling reads a schema directly |
+
+Give your assistant this and it has everything it needs:
+
+```text
+I am integrating the HMD.bio URL shortener API.
+
+Read https://hmd.bio/llms-full.txt first. It is the complete API reference:
+every endpoint, its parameters, request and response schemas, and error
+shapes. Treat it as authoritative over anything you remember about this API.
+
+Key facts:
+- Base URL: https://hmd.bio/api/v1
+- Auth: send `Authorization: Bearer hmd_<key>`. Create a key in the
+  dashboard at https://hmd.bio/dashboard/settings.
+- Every response is shaped { success, statusCode, data?, error? }.
+- Rate limits: 30 requests/minute unauthenticated, 100 authenticated.
+  A 429 means back off, do not retry in a tight loop.
+- Shortening without a key needs a Cloudflare Turnstile token. Sending an
+  API key instead skips Turnstile and attributes the link to that account.
+- To create links on your own hostname, verify it first, then pass
+  "domain": "yourdomain.com" to POST /shorten.
+
+Now help me <describe what you are building>.
+```
+
+Never paste a real API key into a chat with an assistant you do not control. Keys are shown once at creation, are stored hashed, and can be revoked at any time from the dashboard.
+
 ## Features
 
 ### For everyone
@@ -165,11 +201,7 @@ Required only if you want users to attach their own hostnames. Without these, th
 
 Base URL: `https://hmd.bio/api/v1`. All responses are JSON, shaped as `{ success, data?, error?, statusCode }`.
 
-Three ways to read the reference:
-
-- **[hmd.bio/docs](https://hmd.bio/docs)** — the interactive reference, with code samples and a request playground.
-- **[hmd.bio/api/docs](https://hmd.bio/api/docs)** — the raw OpenAPI 3 specification as JSON.
-- **[hmd.bio/llms-full.txt](https://hmd.bio/llms-full.txt)** — the whole specification as a single self-contained markdown file, generated from the same source. Intended for LLMs and coding agents; see also [llms.txt](https://hmd.bio/llms.txt).
+Read the reference at **[hmd.bio/docs](https://hmd.bio/docs)**: interactive, with code samples in curl, JavaScript and Python, and a playground that sends real requests. If you are working with an AI tool, use the machine-readable files listed [at the top of this README](#building-on-the-api-with-an-ai-tool) instead.
 
 ### Authentication
 
