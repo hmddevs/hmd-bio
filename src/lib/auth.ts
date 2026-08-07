@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { apiError } from "@/lib/api-response";
 import { verifyTurnstile } from "@/lib/utils";
 import { hashApiKey } from "@/lib/api-keys";
+import { captureError } from "@/lib/errors";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -125,7 +126,21 @@ export async function requireTurnstile(
   request?: NextRequest
 ): Promise<Response | null> {
   const secretKey = process.env.TURNSTILE_SECRET_KEY;
-  if (!secretKey) return null; // dev mode — skip
+
+  if (!secretKey) {
+    // A missing key is only ever acceptable on a local machine. On any deployed
+    // environment it means the bot protection on a public endpoint is silently
+    // absent, so refuse the request rather than wave it through. Skipping here
+    // previously let automated signups through unchallenged.
+    const isDeployed = Boolean(process.env.VERCEL) || process.env.NODE_ENV === "production";
+    if (isDeployed) {
+      captureError(new Error("TURNSTILE_SECRET_KEY is not configured on a deployed environment"), {
+        route: "requireTurnstile",
+      });
+      return apiError("Verification is temporarily unavailable", 503);
+    }
+    return null; // local development only
+  }
 
   const token = turnstileToken || request?.headers.get("x-turnstile-token");
   if (!token) {

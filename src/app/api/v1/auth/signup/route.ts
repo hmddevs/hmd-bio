@@ -17,7 +17,9 @@ export async function POST(request: NextRequest) {
     const rawIp =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
     const ipHash = hashIP(rawIp);
-    const rl = await rateLimit(`signup:${ipHash}`, { tier: "public" });
+    // Account creation is deliberately far tighter than the public tier's
+    // 30/min. A person signs up once; anything repeating is automation.
+    const rl = await rateLimit(`signup:${ipHash}`, { limit: 5, windowMs: 3_600_000 });
     if (!rl.allowed) {
       return apiError("Rate limit exceeded. Try again later.", 429);
     }
