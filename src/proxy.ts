@@ -88,19 +88,35 @@ function redirectToPrimary(request: NextRequest): NextResponse {
  * you. Gating that on `isPlatformHost` is not enough, because it is decided from
  * the `x-forwarded-host`/`Host` header and returns true for an empty host and
  * for every `*.vercel.app` name, a namespace Vercel allocates first-come to any
- * customer. The origin is therefore chosen from a fixed allowlist only:
+ * customer. The origin is therefore chosen from a fixed allowlist only.
  *
- *   1. VERCEL_URL, injected by Vercel into the runtime and not settable by a
- *      request. Covers production and preview deployments.
- *   2. A localhost origin, and only outside production, because `pnpm dev` has
- *      no VERCEL_URL and must not send its internal calls to the live site.
- *      A dev server on a non-default port needs PORT set for this to resolve.
- *   3. The primary domain, which is a build-time constant.
+ * It must also be an origin that answers. This project has Vercel
+ * Authentication enabled for `all_except_custom_domains`, so every
+ * `*.vercel.app` deployment URL, including the one in VERCEL_URL, answers a
+ * bare request with a 302 to the SSO login. `fetch` follows that redirect and
+ * returns the login page with `ok === true`, so an addressed-to-VERCEL_URL call
+ * does not throw: it succeeds, hands back HTML, and fails only when the caller
+ * tries to parse it as JSON. Every internal call then degrades to "no config",
+ * which is indistinguishable from "this domain is an ordinary shortener". That
+ * is why deeplink serving appeared to work in review and 404s in production.
+ *
+ * The primary domain is therefore preferred over VERCEL_URL, not the other way
+ * round: it is a custom domain, so it is exactly what the protection rule
+ * exempts, and it is a build-time constant rather than anything a request can
+ * influence.
+ *
+ *   1. A localhost origin outside production, because `pnpm dev` must never
+ *      send its internal calls to the live site. A dev server on a non-default
+ *      port needs PORT set for this to resolve.
+ *   2. The primary domain, which is a build-time constant and SSO-exempt.
+ *
+ * Preview deployments are a known gap. Their own origin is protected and the
+ * primary domain would run production code, so `loadDomainConfig` returns null
+ * there and a preview behaves as a shortener. Closing that needs the
+ * deployment's protection-bypass secret sent as a header on the internal fetch,
+ * which is a wider change than this fix and is not required for production.
  */
 function internalOrigin(): string {
-  const vercelHost = process.env.VERCEL_URL?.trim();
-  if (vercelHost) return `https://${vercelHost}`;
-
   if (process.env.NODE_ENV !== "production") {
     return `http://127.0.0.1:${process.env.PORT?.trim() || "3000"}`;
   }
@@ -127,6 +143,12 @@ async function fetchDomainConfig(
   try {
     const res = await fetch(url.toString(), {
       headers: { "x-internal-secret": process.env.INTERNAL_SECRET || "" },
+      // Never follow a redirect. The internal API answers directly or not at
+      // all, so a 3xx here means the origin is wrong, and following it is how
+      // a misconfigured origin turns into a silent "no config": Vercel's SSO
+      // gate answers 302, fetch follows it to a 200 login page, and only the
+      // JSON parse fails. Left manual, that same case is a plain !res.ok.
+      redirect: "manual",
     });
     if (!res.ok) return null;
     return (await res.json()) as DomainConfig;
