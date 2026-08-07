@@ -50,7 +50,20 @@ start swallowing short links.
       catch-all, `src/app/[...keyword]/page.tsx`, gated on the pure
       `fallbackKeywordFromSegments`, so only a genuine prefixed link on a domain
       that configures a prefix resolves and everything else keeps its 404.
-- [ ] Prove in production on a domain we control.
+- [x] Proved in production on `go.guden.com.tr`, 2026-08-08, driven over the
+      public API with a temporary key, in the full Glass shape: `pathPrefix`
+      set to `l`, deeplink mode, and an AASA carrying an `exclude: true` rule
+      for `/l/*` exactly as theirs does. Results: `/l/<code>` resolves (404
+      before the deploy); root links still resolve, so the additive invariant
+      holds against live data; `/list/<code>`, `/L/<code>` and `/l/a/b/c` all
+      404, so matching is whole-segment, case-sensitive and depth-bounded; the
+      association files are served byte-identical and are not shadowed by the
+      prefix, with the `/l/*` exclude intact; a prefixed link targets per
+      platform and forwards path and query
+      (`/l/glassx/deep/path?ref=xyz` to `.../docs/deep/path?platform=ios&ref=xyz`);
+      unmatched paths reach the fallback; the primary domain is unaffected; and
+      `pathPrefix: "icons"` is refused with a 400. Test link and config removed,
+      key revoked, domain restored and re-verified.
 
 ## P1. API key scoping
 
