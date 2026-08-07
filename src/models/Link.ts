@@ -1,6 +1,14 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { PRIMARY_DOMAIN } from "../lib/domains";
 
+// A single platform's deeplink override. Subdocument only (no _id): these
+// are always read/written as a whole array alongside the parent link, never
+// addressed individually.
+export interface ILinkTarget {
+  platform: "ios" | "android" | "desktop";
+  url: string;
+}
+
 export interface ILink extends Document {
   // Denormalised hostname the link lives on. Uniqueness is (domain, keyword),
   // never keyword alone.
@@ -28,9 +36,25 @@ export interface ILink extends Document {
   ogImage?: string;
   owner?: Types.ObjectId | null;
   createdVia: "form" | "api" | "bulk" | "dashboard";
+  /**
+   * Per-platform overrides for a deeplink domain. `url` above stays required
+   * and remains the fallback for any platform with no entry here, so an
+   * existing link with no targets resolves exactly as it does today.
+   */
+  targets: ILinkTarget[];
+  forwardPath: boolean;
+  forwardQuery: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
+
+const LinkTargetSchema = new Schema<ILinkTarget>(
+  {
+    platform: { type: String, enum: ["ios", "android", "desktop"], required: true },
+    url: { type: String, required: true },
+  },
+  { _id: false }
+);
 
 const LinkSchema = new Schema<ILink>(
   {
@@ -62,6 +86,9 @@ const LinkSchema = new Schema<ILink>(
     ogImage: { type: String, default: null },
     owner: { type: Schema.Types.ObjectId, ref: "User", default: null },
     createdVia: { type: String, enum: ["form", "api", "bulk", "dashboard"], default: "form" },
+    targets: { type: [LinkTargetSchema], default: [] },
+    forwardPath: { type: Boolean, default: false },
+    forwardQuery: { type: Boolean, default: false },
   },
   {
     timestamps: true,

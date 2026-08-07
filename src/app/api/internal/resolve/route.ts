@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Link, LIVE_LINK_FILTER } from "@/models/Link";
+import { Link, LIVE_LINK_FILTER, type ILinkTarget } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { hashIP, encryptIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
@@ -8,7 +8,31 @@ import { captureError } from "@/lib/errors";
 import { timingSafeEqualStr } from "@/lib/utils";
 import { PRIMARY_DOMAIN, normaliseHost } from "@/lib/domains";
 import { isDomainServable } from "@/lib/domain-cache";
+import { platformFromUA, parseHttpUrl } from "@/lib/deeplink";
 import { UAParser } from "ua-parser-js";
+
+/**
+ * The URL this request should be sent to.
+ *
+ * `Link.url` stays the answer unless the link carries an override for the
+ * caller's platform, so a link with no targets (every link that exists today)
+ * resolves byte-identically. An override is only honoured when it is a real
+ * http(s) URL: a malformed or non-http entry falls back rather than being
+ * handed to a redirect.
+ */
+function resolveTargetUrl(
+  fallbackUrl: string,
+  targets: ILinkTarget[] | undefined,
+  userAgent: string
+): string {
+  if (!targets || targets.length === 0) return fallbackUrl;
+
+  const platform = platformFromUA(UAParser(userAgent).os.name);
+  const match = targets.find((t) => t.platform === platform);
+  if (!match) return fallbackUrl;
+
+  return parseHttpUrl(match.url) ? match.url : fallbackUrl;
+}
 
 /**
  * Internal resolve endpoint called by middleware.
@@ -103,8 +127,13 @@ export async function GET(request: NextRequest) {
   }
 
   return Response.json({
-    url: link.url,
+    url: resolveTargetUrl(link.url, link.targets, request.headers.get("user-agent") || ""),
     statusCode: link.statusCode || 301,
     isPasswordProtected: link.isPasswordProtected,
+    // Sent so the middleware can compose the incoming path and query onto the
+    // target. Both default false on the model, so an existing link keeps
+    // getting exactly the URL stored on it.
+    forwardPath: link.forwardPath === true,
+    forwardQuery: link.forwardQuery === true,
   });
 }
