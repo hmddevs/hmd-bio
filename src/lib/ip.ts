@@ -1,11 +1,18 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 
-const IP_SALT = process.env.IP_HASH_SALT;
-
-if (!IP_SALT) {
-  throw new Error(
-    "IP_HASH_SALT is not set — refusing to hash IPs with a fallback salt."
-  );
+// Read at call time rather than module scope, matching getEncryptionKey() below.
+// A module-scope throw fails the Next build while it collects page data in any
+// environment without the salt, which is a build failure standing in for what
+// should be a runtime one. The refusal itself is unchanged: hashing without a
+// configured salt still throws rather than falling back.
+function getIPSalt(): string {
+  const salt = process.env.IP_HASH_SALT;
+  if (!salt) {
+    throw new Error(
+      "IP_HASH_SALT is not set — refusing to hash IPs with a fallback salt."
+    );
+  }
+  return salt;
 }
 
 /**
@@ -15,7 +22,7 @@ if (!IP_SALT) {
 export function hashIP(ip: string): string {
   if (!ip) return "";
   return createHash("sha256")
-    .update(IP_SALT + ip)
+    .update(getIPSalt() + ip)
     .digest("hex")
     .slice(0, 16);
 }
