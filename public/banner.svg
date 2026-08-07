@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="HMD.bio — URL shortener and link analytics platform">
+  <title>HMD.bio</title>
+  <desc>URL shortener and link analytics platform, with a REST API.</desc>
+
+  <defs>
+    <!--
+      The system's one ambient texture, per DESIGN.md: a 24px radial dot grid
+      in #374151 at 0.3 opacity. Nothing else decorates this banner.
+    -->
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.5" fill="#374151" opacity="0.3" />
+    </pattern>
+
+    <!-- Fades the grid out behind the wordmark so the type stays the loudest thing. -->
+    <radialGradient id="grid-falloff" cx="72%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.4" />
+    </radialGradient>
+    <mask id="grid-mask">
+      <rect width="1280" height="360" fill="url(#grid-falloff)" />
+    </mask>
+
+    <clipPath id="card-clip">
+      <rect x="700" y="96" width="500" height="168" rx="16" />
+    </clipPath>
+  </defs>
+
+  <!-- Void background. -->
+  <rect width="1280" height="360" fill="#0a0a0a" />
+  <rect width="1280" height="360" fill="url(#dots)" mask="url(#grid-mask)" />
+
+  <!-- Wordmark. The full stop is the single accent, the one place blue appears as type. -->
+  <text x="80" y="176"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="76" font-weight="700" letter-spacing="-2.5" fill="#f5f5f5">hmd<tspan fill="#90caf9">.</tspan>bio</text>
+
+  <text x="82" y="222"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="21" font-weight="400" letter-spacing="0.1" fill="#9ca3af">URL shortener and link analytics, with a REST API.</text>
+
+  <!-- Hairline rule, not a coloured accent stripe. -->
+  <rect x="82" y="252" width="392" height="1" fill="#808080" opacity="0.15" />
+
+  <text x="82" y="284"
+        font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"
+        font-size="15" font-weight="400" letter-spacing="0.2" fill="#6b7280">AGPL-3.0<tspan dx="18" fill="#4b5563">·</tspan><tspan dx="18">Next.js 16</tspan><tspan dx="18" fill="#4b5563">·</tspan><tspan dx="18">TypeScript</tspan><tspan dx="18" fill="#4b5563">·</tspan><tspan dx="18">MongoDB</tspan></text>
+
+  <!--
+    The product, stated literally rather than illustrated: a long URL becoming a
+    short one. Outlined card, hairline border, no shadow.
+  -->
+  <g>
+    <rect x="700" y="96" width="500" height="168" rx="16" fill="#141414" stroke="#808080" stroke-opacity="0.15" stroke-width="1" />
+
+    <g clip-path="url(#card-clip)">
+      <text x="728" y="146"
+            font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"
+            font-size="15" fill="#6b7280">https://example.com/quarterly/report</text>
+
+      <!-- Downward arrow: the transformation, drawn once. -->
+      <path d="M 732 168 L 732 194" stroke="#90caf9" stroke-width="1.5" stroke-linecap="round" opacity="0.7" />
+      <path d="M 727 188 L 732 194 L 737 188" stroke="#90caf9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7" />
+
+      <text x="728" y="230"
+            font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"
+            font-size="21" font-weight="600" fill="#f5f5f5">hmd.bio/<tspan fill="#90caf9">baKBI</tspan></text>
+    </g>
+  </g>
+</svg>
