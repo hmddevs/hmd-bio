@@ -222,6 +222,31 @@ but flagged two consequences of the reorder.
       Not currently exploitable: NextAuth v5 defaults the cookie to `SameSite=Lax` and
       nothing overrides it, so cross-site POSTs are already blocked. Belt-and-braces only.
 
+## P0.5: Admin authorisation weaknesses (found 2026-08-07, NOT fixed)
+
+Surfaced by the security review of the P5.3 fix. All pre-existing, none introduced by that
+change, but the review was asked to confirm the authorisation and these are what it found.
+Ranked here because the first one is a live privilege-retention hole.
+
+- [ ] 0.5a HIGH. Admin role is a JWT snapshot, so demoting an admin does not revoke their
+      access. `src/lib/auth.ts:55-58` sets `token.role` only at sign-in and the session
+      callback copies it verbatim, so the admin gate trusts a role that can be up to seven
+      days stale. `PATCH { action: "demote" }` writes the database and nothing else, so a
+      demoted admin keeps user-deletion capability for the remaining life of their token.
+      Fix by re-reading role and status from the database in the admin gate, or by adding a
+      role epoch to the JWT and invalidating on demote. Same class as 1.5b; fixing session
+      freshness once would close both.
+- [ ] 0.5b MEDIUM. `DELETE /api/v1/admin/users/{id}` accepts Bearer API keys
+      (`requireAuth(request)`) while `PATCH` on the same route does not (`requireAuth()`).
+      The destructive verb has the broader auth surface: a leaked admin API key can delete
+      accounts but cannot approve one. Restrict deletion to session auth.
+- [ ] 0.5c LOW. `DELETE` omits the `ObjectId.isValid(id)` guard that `PATCH` has, so a
+      malformed id throws a CastError and returns 500 plus a Sentry event instead of 400.
+      Noise, not a vulnerability.
+- [ ] 0.5d LOW, product decision. An admin can delete another admin; only self-deletion is
+      blocked. Combined with 0.5a this is the lateral-movement path. Umut's call whether
+      that is intended.
+
 ## P2: Inconsistent API responses
 
 - [ ] 2.1 `POST /api/v1/domains/{hostname}/verify` and `pointingRecord`. NOTE: the premise
