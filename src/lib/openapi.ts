@@ -590,6 +590,15 @@ export const openApiSpec = {
                     url: { type: "string", format: "uri" },
                     keyword: { type: "string", maxLength: 100, pattern: "^[a-zA-Z0-9_-]*$" },
                     title: { type: "string", maxLength: 500 },
+                    domain: {
+                      type: "string",
+                      description:
+                        "Hostname to create this item on. Per-item, so a single import can span " +
+                        "several of the caller's domains. Omitted means the primary domain (hmd.bio), " +
+                        "matching the pre-custom-domain shape. Any other hostname requires the caller " +
+                        "to own an `active` Domain record for it; a mismatch skips just that item " +
+                        "rather than failing the whole batch.",
+                    },
                   },
                 },
               },
@@ -616,6 +625,7 @@ export const openApiSpec = {
                                 type: "object",
                                 properties: {
                                   keyword: { type: "string" },
+                                  domain: { type: "string" },
                                   url: { type: "string" },
                                   status: { type: "string", enum: ["created", "skipped"] },
                                   reason: { type: "string" },
@@ -1782,6 +1792,119 @@ export const openApiSpec = {
         },
       },
     },
+    "/api/v1/admin/domains": {
+      get: {
+        tags: ["Admin"],
+        summary: "List custom domains across all users",
+        description:
+          "Admin-only. Supports pagination, a case-insensitive hostname search, and status " +
+          "filtering. Each domain is enriched with its owner's username and email.",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } },
+          { name: "search", in: "query", schema: { type: "string" }, description: "Matched against hostname" },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["pending_dns", "verifying", "provisioning", "active", "failed", "suspended"],
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Paginated domain list, each with its owner",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: {
+                          type: "object",
+                          properties: {
+                            domains: { type: "array", items: { $ref: "#/components/schemas/AdminDomain" } },
+                            pagination: { $ref: "#/components/schemas/Pagination" },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/AdminOnly" },
+          "429": { $ref: "#/components/responses/RateLimited" },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
+    },
+    "/api/v1/admin/domains/{hostname}": {
+      patch: {
+        tags: ["Admin"],
+        summary: "Suspend or unsuspend a domain",
+        description:
+          "Admin-only. `suspend` takes the domain out of service regardless of its current status; " +
+          "`unsuspend` returns it to `active`. Re-issuing the same action on a domain already in that " +
+          "state is a no-op success that does not overwrite the original `suspendedReason`/" +
+          "`suspendedAt`.",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        parameters: [{ $ref: "#/components/parameters/HostnamePath" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AdminDomainActionRequest" },
+              example: { action: "suspend", reason: "Reported for phishing" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Updated domain",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    { type: "object", properties: { data: { $ref: "#/components/schemas/AdminDomain" } } },
+                  ],
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Invalid hostname, missing/invalid JSON body, or `action` not one of suspend/unsuspend",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 400, error: "`action` must be one of: suspend, unsuspend" },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/AdminOnly" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": {
+            description: "The requested transition is illegal from the domain's current status",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 409, error: 'Cannot suspend a domain in status "pending_dns"' },
+              },
+            },
+          },
+          "429": { $ref: "#/components/responses/RateLimited" },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
+    },
   },
   components: {
     parameters: {
@@ -2102,6 +2225,48 @@ export const openApiSpec = {
           email: { type: "string", format: "email", description: "Only used with action `editProfile`" },
         },
       },
+      AdminDomain: {
+        type: "object",
+        properties: {
+          hostname: { type: "string" },
+          status: {
+            type: "string",
+            enum: ["pending_dns", "verifying", "provisioning", "active", "failed", "suspended"],
+          },
+          linkCount: { type: "integer" },
+          verifiedAt: { type: "string", format: "date-time", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+          failureReason: { type: "string", nullable: true },
+          suspendedReason: {
+            type: "string",
+            nullable: true,
+            description: "Only present on the single-domain PATCH response, not the list response",
+          },
+          suspendedAt: {
+            type: "string",
+            format: "date-time",
+            nullable: true,
+            description: "Only present on the single-domain PATCH response, not the list response",
+          },
+          owner: {
+            type: "object",
+            nullable: true,
+            description: "Only present on the list response; null if the owning user no longer exists",
+            properties: {
+              username: { type: "string" },
+              email: { type: "string", format: "email" },
+            },
+          },
+        },
+      },
+      AdminDomainActionRequest: {
+        type: "object",
+        required: ["action"],
+        properties: {
+          action: { type: "string", enum: ["suspend", "unsuspend"] },
+          reason: { type: "string", description: "Optional note stored as `suspendedReason`; ignored for `unsuspend`" },
+        },
+      },
       AdminClick: {
         type: "object",
         properties: {
@@ -2254,6 +2419,7 @@ export const openApiSpec = {
  *   - /api/v1/user/links (the real path is /api/v1/links)
  *
  * /api/v1/admin/users, /api/v1/admin/users/{id}, /api/v1/admin/clicks,
+ * /api/v1/admin/domains, /api/v1/admin/domains/{hostname},
  * /api/v1/auth/signup, /api/v1/auth/verify, /api/v1/auth/resend-verification,
  * /api/v1/auth/email, and /api/v1/auth/email/confirm ARE implemented (routes
  * confirmed under src/app/api/v1/** as of this writing) and are documented
