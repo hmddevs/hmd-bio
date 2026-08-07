@@ -27,6 +27,22 @@ body {
   transition: background-color 0.2s, color 0.2s;
 }
 
+/* Entrance motion for the docs search dialog and navigation drawer.
+   Both are feedback on an explicit action, so they stay short and ease-out.
+   Applied via motion-safe:, so prefers-reduced-motion skips them entirely. */
+@keyframes docs-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+}
+
+@keyframes docs-slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
 /* Subtle dot grid background */
 body::before {
   content: "";

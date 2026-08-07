@@ -15,7 +15,8 @@ export const openApiSpec = {
       "REST API for HMD.bio, a URL shortener and link analytics platform. " +
       "Public endpoints (shorten, expand, stats) are rate-limited by IP and need no " +
       "authentication, aside from Cloudflare Turnstile on shorten. All other endpoints " +
-      "manage a signed-in user's own links and require a dashboard session cookie.",
+      "manage a signed-in user's own links, domains and keys, and require either a " +
+      "dashboard session cookie or an `Authorization: Bearer hmd_...` API key.",
     contact: {
       name: "HMD Developments",
       url: "https://hmddevs.org",
