@@ -35,6 +35,30 @@ interface DnsRecord {
   value: string;
 }
 
+/**
+ * Coerce anything the API hands back into something React can render. A payload
+ * that turns out to be an object rather than a string would otherwise throw
+ * "Objects are not valid as a React child" and take the whole page down, which
+ * is a poor trade for one malformed field.
+ */
+function asText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+/** Drop any record whose fields are not renderable strings. */
+function toDnsRecords(value: unknown): DnsRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const type = asText(entry?.recordType ?? entry?.type);
+    const name = asText(entry?.name);
+    const recordValue = asText(entry?.value);
+    if (!type || !name || !recordValue) return [];
+    return [{ recordType: type as DnsRecord["recordType"], name, value: recordValue }];
+  });
+}
+
 type DomainStatus =
   | "pending_dns"
   | "verifying"
@@ -150,7 +174,7 @@ export default function DomainsPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setAddError(json.error || "Could not add domain");
+        setAddError(asText(json.error, "Could not add domain"));
         return;
       }
       setJustAdded(json.data);
@@ -177,12 +201,14 @@ export default function DomainsPage() {
         setVerifyResult({
           hostname: target,
           outcome: "provisioning",
-          requiredRecords: json.data?.requiredRecords ?? [],
+          requiredRecords: toDnsRecords(json.data?.requiredRecords),
         });
-      } else if (res.status === 400) {
-        setVerifyResult({ hostname: target, outcome: "mismatch", message: json.error });
       } else {
-        setVerifyResult({ hostname: target, outcome: "mismatch", message: json.error || "Check failed. Try again." });
+        setVerifyResult({
+          hostname: target,
+          outcome: "mismatch",
+          message: asText(json.error, "Check failed. Try again."),
+        });
       }
       loadDomains();
     } catch {
@@ -204,12 +230,12 @@ export default function DomainsPage() {
       const json = await res.json();
       if (!res.ok) {
         // 409 carries the link count in the message; surface it and offer force.
-        const match = json.error?.match(/(\d+) link/);
+        const match = asText(json.error).match(/(\d+) link/);
         if (res.status === 409 && match) {
           setDeleteLinkCount(Number(match[1]));
           return;
         }
-        setDeleteError(json.error || "Could not remove domain");
+        setDeleteError(asText(json.error, "Could not remove domain"));
         return;
       }
       setDeleteTarget(null);
