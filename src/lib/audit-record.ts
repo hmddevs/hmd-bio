@@ -30,9 +30,34 @@ export const AUDIT_ACTIONS = [
   // An administrator deleting a link they do not own, which also deletes every
   // click recorded against it.
   "admin.link.delete",
+  // An administrator repointing or renaming a link they do not own. Arguably
+  // worse than deleting it: a deletion is visible to everyone holding the URL,
+  // whereas a repointed link keeps resolving and silently sends its traffic
+  // somewhere else.
+  "admin.link.edit",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+/**
+ * Whether an action on an owned resource is an *administrative* access rather
+ * than ordinary self-service.
+ *
+ * `requireOwnership` lets an administrator through on somebody else's link, so
+ * the same handler serves both cases and only one of them belongs in the audit
+ * trail. A user acting on their own link is not administrative access and must
+ * not be recorded. Kept here, in one place, because the delete and edit paths
+ * would otherwise each restate the condition and drift apart.
+ *
+ * An unowned resource (`ownerId === null`, a link detached when its owner was
+ * deleted) counts as administrative: nobody can act on it as its owner.
+ */
+export function isAdministrativeAccess(
+  actor: { id: string; role?: string | null },
+  ownerId: string | null
+): boolean {
+  return actor.role === "admin" && ownerId !== actor.id;
+}
 
 export const AUDIT_SUBJECT_TYPES = ["click", "user", "domain", "link", "none"] as const;
 export type AuditSubjectType = (typeof AUDIT_SUBJECT_TYPES)[number];

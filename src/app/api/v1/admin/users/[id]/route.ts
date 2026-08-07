@@ -23,21 +23,17 @@ import mongoose from "mongoose";
 // way and a retry is idempotent, so this buys diagnosability, not correctness.
 export const maxDuration = 60;
 
-const VALID_ACTIONS = new Set([
-  "approve",
-  "disable",
-  "enable",
-  "verify",
-  "promote",
-  "demote",
-  "editProfile",
-]);
-
 // Every administrative change to somebody else's account is recorded, not only
 // deletion. Disabling hides an account from its owner and promoting hands out
 // administrative access, which is exactly what an investigation into a
 // compromised admin account needs to be able to see.
-const AUDIT_ACTIONS_BY_ADMIN_ACTION: Record<string, AuditAction> = {
+//
+// This map is the single list of administrative actions: the accepted set and
+// the error message are both derived from it below. Two hand-maintained lists
+// would agree until somebody added an action to one of them, and the failure
+// mode of that drift is a privilege change happening with no audit entry, which
+// is silent by definition.
+const AUDIT_ACTIONS_BY_ADMIN_ACTION = {
   approve: "admin.user.approve",
   disable: "admin.user.disable",
   enable: "admin.user.enable",
@@ -45,7 +41,16 @@ const AUDIT_ACTIONS_BY_ADMIN_ACTION: Record<string, AuditAction> = {
   promote: "admin.user.promote",
   demote: "admin.user.demote",
   editProfile: "admin.user.edit_profile",
-};
+} as const satisfies Record<string, AuditAction>;
+
+type AdminUserAction = keyof typeof AUDIT_ACTIONS_BY_ADMIN_ACTION;
+
+const VALID_ACTIONS = new Set<string>(Object.keys(AUDIT_ACTIONS_BY_ADMIN_ACTION));
+const VALID_ACTIONS_MESSAGE = `Invalid action. Use: ${Object.keys(AUDIT_ACTIONS_BY_ADMIN_ACTION).join(", ")}`;
+
+function isAdminUserAction(value: unknown): value is AdminUserAction {
+  return typeof value === "string" && VALID_ACTIONS.has(value);
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -68,9 +73,9 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { action } = body as { action: string };
-    if (typeof action !== "string" || !VALID_ACTIONS.has(action)) {
-      return apiError("Invalid action. Use: approve, disable, enable, verify, promote, demote, editProfile", 400);
+    const { action } = body as { action: unknown };
+    if (!isAdminUserAction(action)) {
+      return apiError(VALID_ACTIONS_MESSAGE, 400);
     }
 
     await connectDB();
@@ -135,11 +140,15 @@ export async function PATCH(
         break;
       }
       default:
-        return apiError("Invalid action. Use: approve, disable, enable, verify, promote, demote, editProfile", 400);
+        return apiError(VALID_ACTIONS_MESSAGE, 400);
     }
 
     await target.save();
 
+    // The outcome is deliberately ignored: the change above has already
+    // committed, so failing the request here would report failure for work that
+    // actually happened. `admin/clicks:GET` is the sole route that fails closed
+    // instead, because nothing has been disclosed at its call site yet.
     await recordAudit({
       request,
       actor: session.user,
@@ -258,6 +267,10 @@ export async function DELETE(
     // whole operation. The user id is kept even though the document is gone:
     // it is the only stable handle left for the domains and links that
     // referenced it.
+    // The outcome is deliberately ignored: the change above has already
+    // committed, so failing the request here would report failure for work that
+    // actually happened. `admin/clicks:GET` is the sole route that fails closed
+    // instead, because nothing has been disclosed at its call site yet.
     await recordAudit({
       request,
       actor: session.user,

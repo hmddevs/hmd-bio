@@ -87,6 +87,10 @@ export async function PATCH(
     // Suspending takes a customer's live domain out of service, so it is
     // recorded whether or not it changed anything: a repeat call is a no-op for
     // the domain but still an administrator reaching for the switch.
+    // The outcome is deliberately ignored: the change above has already
+    // committed, so failing the request here would report failure for work that
+    // actually happened. `admin/clicks:GET` is the sole route that fails closed
+    // instead, because nothing has been disclosed at its call site yet.
     await recordAudit({
       request,
       actor: session.user,

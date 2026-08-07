@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildAuditRecord,
+  isAdministrativeAccess,
   looksLikeIpAddress,
   MAX_SUBJECT_IDS,
   REDACTED,
@@ -45,6 +46,36 @@ describe("looksLikeIpAddress", () => {
 
   it("does not fire on a dotted quad that is out of range", () => {
     expect(looksLikeIpAddress("999.999.999.999")).toBe(false);
+  });
+});
+
+describe("isAdministrativeAccess", () => {
+  const ADMIN = { id: "665f1c2a9b1e4f0012ab34cd", role: "admin" };
+  const USER = { id: "665f1c2a9b1e4f0012ab34ce", role: "user" };
+
+  it("counts an administrator acting on somebody else's resource", () => {
+    expect(isAdministrativeAccess(ADMIN, USER.id)).toBe(true);
+  });
+
+  it("does not count an administrator editing their own link", () => {
+    // An admin is still an ordinary user of their own links, and logging that
+    // would bury real administrative access in their own routine activity.
+    expect(isAdministrativeAccess(ADMIN, ADMIN.id)).toBe(false);
+  });
+
+  it("does not count an ordinary user editing their own link", () => {
+    expect(isAdministrativeAccess(USER, USER.id)).toBe(false);
+  });
+
+  it("does not count a non-admin at all, whoever owns the resource", () => {
+    // Unreachable in practice, since ownership is enforced upstream, but the
+    // predicate must not be the thing that grants an entry to a non-admin.
+    expect(isAdministrativeAccess(USER, ADMIN.id)).toBe(false);
+    expect(isAdministrativeAccess({ id: USER.id }, null)).toBe(false);
+  });
+
+  it("counts an administrator acting on a link left with no owner", () => {
+    expect(isAdministrativeAccess(ADMIN, null)).toBe(true);
   });
 });
 

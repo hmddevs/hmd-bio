@@ -52,15 +52,22 @@ export interface IAuditLog extends Document {
   createdAt: Date;
 }
 
-// Thirteen months. The log has to outlive the data it describes to be worth
-// keeping: click retention under P3 is heading for twelve months, and an entry
-// that expires first would leave clicks whose access history has already gone.
-// Thirteen gives a full year plus a month of overlap, which is enough to cover
-// one annual audit or DPA review cycle looking back over the preceding year,
-// while still bounding growth so the collection cannot run away. It also
-// matches the 400-day ceiling browsers now impose on cookies, so "just over a
-// year" is a period this business already reasons in.
-const RETENTION_DAYS = 400;
+// Audit entries are kept for 400 days, roughly thirteen months, and then
+// removed by the TTL index below.
+//
+// This is a standalone choice, not one derived from click retention. It is long
+// enough that an annual audit or DPA review can look back over the whole of the
+// preceding year with a month of margin either side, and short enough that the
+// collection's growth stays bounded without a job anyone has to remember to
+// run. 400 days is also the ceiling browsers now impose on cookies, so it is a
+// period this business already reasons in.
+//
+// Revisitable: if a customer contract or a regulator asks for a different
+// window, change the number here and re-run
+// scripts/migrate-audit-log-indexes.ts, which recreates the TTL index when the
+// declared period no longer matches the live one.
+export const AUDIT_RETENTION_DAYS = 400;
+export const AUDIT_RETENTION_SECONDS = AUDIT_RETENTION_DAYS * 24 * 60 * 60;
 
 const AuditLogSchema = new Schema<IAuditLog>(
   {
@@ -89,7 +96,12 @@ const AuditLogSchema = new Schema<IAuditLog>(
 
 // Retention, enforced by the server rather than by a job we have to remember to
 // run. A TTL index is the one deletion path this collection has.
-AuditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: RETENTION_DAYS * 24 * 60 * 60 });
+//
+// `autoIndex` is off (see src/lib/db.ts), so declaring an index here does NOT
+// create it. Every index below reaches the live database only through
+// scripts/migrate-audit-log-indexes.ts, which must be run before this feature
+// is relied upon.
+AuditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: AUDIT_RETENTION_SECONDS });
 
 // "What did this administrator do", the first question in any investigation.
 AuditLogSchema.index({ actorId: 1, createdAt: -1 });
