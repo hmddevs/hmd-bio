@@ -11,6 +11,7 @@ import { detachLinksForHostname } from "@/lib/domain-state";
 import { invalidateDomainStatus } from "@/lib/domain-cache";
 import { hostnameSyntaxSchema } from "@/lib/validations";
 import { verificationRecordName } from "@/lib/dns-verify";
+import { vercelPointingRecord } from "@/lib/domains";
 
 export async function GET(
   request: NextRequest,
@@ -52,6 +53,10 @@ export async function GET(
                 name: verificationRecordName(domain.hostname),
                 value: domain.verificationToken,
               },
+        // The TXT record only proves ownership. This one is what makes the
+        // hostname serve traffic, and both are needed before it goes live.
+        pointingRecord:
+          domain.status === "active" ? null : vercelPointingRecord(domain.hostname),
       },
       200,
       request

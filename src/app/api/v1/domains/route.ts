@@ -9,6 +9,7 @@ import { captureError } from "@/lib/errors";
 import { generateVerificationToken, detachLinksForHostname } from "@/lib/domain-state";
 import { invalidateDomainStatus } from "@/lib/domain-cache";
 import { verificationRecordName } from "@/lib/dns-verify";
+import { vercelPointingRecord } from "@/lib/domains";
 import type { IDomain } from "@/models/Domain";
 
 /**
@@ -78,6 +79,10 @@ function presentForOwner(domain: DomainDocumentShape) {
             name: verificationRecordName(domain.hostname),
             value: domain.verificationToken,
           },
+    // Attaching a domain needs two DNS records, not one: the TXT above proves
+    // ownership, this one makes the hostname actually serve traffic.
+    pointingRecord:
+      domain.status === "active" ? null : vercelPointingRecord(domain.hostname),
   };
 }
 
@@ -189,8 +194,11 @@ export async function POST(request: NextRequest) {
           name: verificationRecordName(created.hostname),
           value: created.verificationToken,
         },
+        pointingRecord: vercelPointingRecord(created.hostname),
         nextStep:
-          "Create this TXT record at your DNS provider, then call POST /api/v1/domains/{hostname}/verify.",
+          "Create both records at your DNS provider, then call POST /api/v1/domains/{hostname}/verify. " +
+          "The TXT record proves ownership; the second record points the domain at us. " +
+          "If your DNS is behind a proxy such as Cloudflare, set the pointing record to DNS only.",
       },
       201,
       request

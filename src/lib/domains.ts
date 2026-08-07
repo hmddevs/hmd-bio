@@ -205,3 +205,104 @@ export function isBlockedHostname(host: string): boolean {
 
   return false;
 }
+
+/**
+ * Multi-label public suffixes that must never be claimable on their own, and
+ * which apex detection has to know about.
+ *
+ * This is a deliberately short hardcoded list of the common ones rather than a
+ * full Public Suffix List dependency: it matches the existing blocklist
+ * approach, and the real guard on claiming is still DNS TXT verification, which
+ * nobody can pass for a suffix they do not control.
+ */
+export const PUBLIC_SUFFIXES: ReadonlySet<string> = new Set([
+  "co.uk", "org.uk", "me.uk", "gov.uk", "ac.uk", "net.uk", "ltd.uk", "plc.uk",
+  "com.au", "net.au", "org.au", "edu.au", "gov.au", "id.au",
+  "co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp",
+  "com.br", "net.br", "org.br", "gov.br",
+  "co.nz", "net.nz", "org.nz", "govt.nz", "ac.nz",
+  "co.za", "org.za", "net.za", "gov.za", "ac.za",
+  "com.tr", "net.tr", "org.tr", "gov.tr", "edu.tr", "web.tr",
+  "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn",
+  "co.in", "net.in", "org.in", "gov.in", "ac.in",
+  "com.mx", "com.ar", "com.sg", "com.hk", "com.tw", "co.kr", "co.il", "co.id",
+  "com.pl", "com.ua", "com.ru", "co.th", "com.my", "com.ph", "com.vn",
+]);
+
+/**
+ * How many trailing labels make up the public suffix of a hostname: two for a
+ * known multi-label suffix such as `com.tr`, one otherwise.
+ */
+function publicSuffixLabelCount(labels: readonly string[]): number {
+  if (labels.length >= 2 && PUBLIC_SUFFIXES.has(labels.slice(-2).join("."))) {
+    return 2;
+  }
+  return 1;
+}
+
+/**
+ * True when the hostname is a registrable domain with nothing in front of it.
+ *
+ * Counting labels is not enough: `guden.com.tr` has three labels but is an apex,
+ * because `com.tr` is a public suffix. The rule is that a hostname is an apex
+ * when it has exactly one label above its public suffix.
+ *
+ * Returns false for anything that is not a plausible hostname, and for a bare
+ * public suffix, neither of which has a meaningful pointing record.
+ */
+export function isApexDomain(hostname: string): boolean {
+  const normalised = normaliseHost(hostname);
+  if (!normalised || !normalised.includes(".")) return false;
+
+  const labels = normalised.split(".");
+  if (labels.some((label) => label === "")) return false;
+
+  return labels.length === publicSuffixLabelCount(labels) + 1;
+}
+
+/**
+ * Where a custom domain must point for Vercel to serve it. Both are read from
+ * the environment first, so they can be corrected without a code change if
+ * Vercel ever moves them.
+ */
+export const VERCEL_APEX_IP: string = process.env.VERCEL_APEX_IP?.trim() || "76.76.21.21";
+
+export const VERCEL_CNAME_TARGET: string =
+  process.env.VERCEL_CNAME_TARGET?.trim() || "cname.vercel-dns.com";
+
+export interface PointingRecord {
+  recordType: "A" | "CNAME";
+  name: string;
+  value: string;
+}
+
+/**
+ * The DNS record that makes a hostname actually serve traffic, as opposed to
+ * the TXT record that only proves ownership.
+ *
+ * An apex gets an A record, because a CNAME at the apex is invalid DNS and
+ * would break the domain's other records. A subdomain gets a CNAME.
+ *
+ * `name` is the exact label to type into a DNS provider's form. Most providers
+ * use "@" to mean the domain itself, so that is what an apex returns; a few ask
+ * for the full hostname instead, in which case the user should enter the whole
+ * domain. A subdomain returns only the labels in front of the registrable
+ * domain, for example "go" for "go.acme.com".
+ */
+export function vercelPointingRecord(hostname: string): PointingRecord {
+  const normalised = normaliseHost(hostname);
+
+  if (isApexDomain(normalised)) {
+    return { recordType: "A", name: "@", value: VERCEL_APEX_IP };
+  }
+
+  const labels = normalised.split(".");
+  const suffixCount = publicSuffixLabelCount(labels);
+  const prefix = labels.slice(0, Math.max(labels.length - suffixCount - 1, 0));
+
+  return {
+    recordType: "CNAME",
+    name: prefix.length > 0 ? prefix.join(".") : normalised,
+    value: VERCEL_CNAME_TARGET,
+  };
+}
