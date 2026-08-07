@@ -32,13 +32,16 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
+        id: install
         run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: pnpm lint
 
       # Runs even when lint fails, so a PR gets both sets of errors at once
-      # rather than one round trip per check.
+      # rather than one round trip per check. It is gated on the install having
+      # succeeded: typechecking a tree with no node_modules reports every import
+      # in the repo as a missing module, which buries the real failure.
       - name: Typecheck
-        if: '!cancelled()'
+        if: "!cancelled() && steps.install.outcome == 'success'"
         run: npx tsc --noEmit
