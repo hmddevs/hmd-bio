@@ -67,8 +67,44 @@ Also fixed here, both found by review rather than planned:
 
 - [ ] `INTERNAL_SECRET` rotation decision. If any customer-owned domain has ever
       been `active`, the secret should be treated as disclosed. Owner's call.
-- [ ] Prove it on a domain whose blast radius we control, across real installs,
-      before any existing deeplink host migrates.
+- [x] Prove it on a domain whose blast radius we control. Done on
+      `go.guden.com.tr`, 2026-08-07, driven entirely over the public API with a
+      temporary key, since that is the path a customer takes. The first run
+      failed: both association files 404 and the fallback target was ignored,
+      while the config read back correctly from the database and the API.
+      Cause in the next item. After the fix, re-run on the same domain:
+      association files 200 as `application/json` with `nosniff` and
+      byte-identical to what was uploaded, including deliberately irregular key
+      order and whitespace; iOS, Android and desktop user agents each resolved
+      to their own target; `/prooflink/deep/path?ref=xyz` forwarded to
+      `…/docs/deep/path?platform=ios&ref=xyz`, so path and query compose without
+      dropping the target's own parameters; an unmatched path redirected to the
+      fallback; and the two pre-existing shortener links on the domain were
+      untouched, which is the additive invariant holding in production rather
+      than in principle. Switching the domain back to `shortener` took effect
+      immediately, so invalidation works in both directions. Test link and
+      config removed, key revoked.
+- [x] Deeplink serving had never worked in production, on any domain. Vercel
+      Authentication is set to `all_except_custom_domains`, so every
+      `*.vercel.app` URL answers a bare request with a 302 to the SSO login, and
+      `internalOrigin` preferred `VERCEL_URL`. `fetch` follows that redirect and
+      returns the login page with `ok === true`, so nothing throws: the call
+      succeeds, hands back HTML, and fails only at the JSON parse, which
+      `fetchDomainConfig` turns into `null`. The proxy cannot distinguish that
+      from "this domain is an ordinary shortener", so the feature degraded
+      silently into the behaviour it was replacing. Fixed in #30 by preferring
+      the primary domain, which is what the protection rule exempts, and by
+      refusing to follow redirects so a wrong origin fails loudly. Worth
+      remembering: every layer looked correct in isolation, and only requesting
+      the file from the real host showed it was broken.
+- [ ] Real installs, on real devices. Not provable here: Apple and Google verify
+      an association file against a real app's team ID or package signature, so
+      this needs the actual app. Everything up to and including the bytes those
+      services fetch is now proven.
+- [ ] Preview deployments cannot read domain config: their own origin is
+      SSO-protected and the primary domain would run production code, so a
+      preview behaves as a shortener. Needs the deployment protection-bypass
+      secret on the internal fetch. Production is unaffected.
 - [ ] `Link.url` is still validated by `z.string().url()`, which in Zod 4
       accepts `javascript:` and `data:`. It was harmless while it was only a
       redirect target, but deeplinks made it the desktop bucket and the
@@ -76,7 +112,11 @@ Also fixed here, both found by review rather than planned:
       check is now the one everything falls back to. Tightening it to
       `absoluteHttpUrl` is a behaviour change for any customer already storing a
       custom-scheme URL, so it needs a production data check first. Deliberately
-      left out of the config-layer PR.
+      left out of the config-layer PR. Production checked on 2026-08-07: of 301
+      links, 277 were `https:` and 22 `http:`, none carried a dangerous scheme,
+      and the only 2 exceptions were schemeless bare hostnames that `new URL()`
+      rejects, so they were already broken and have been deleted. The change is
+      therefore safe; it is left open only because it is the owner's call.
 
 ## Sequencing, unchanged
 
