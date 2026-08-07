@@ -37,7 +37,7 @@ export async function POST(
       return apiError("Link not found", 404);
     }
 
-    const forbidden = requireOwnership(link, session);
+    const forbidden = requireOwnership(link, session, { notFoundMessage: "Link not found" });
     if (forbidden) return forbidden;
 
     // The QR code must encode the link's own domain, not the platform's.

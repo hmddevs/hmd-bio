@@ -4,13 +4,14 @@ import { Domain } from "@/models/Domain";
 import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { removeDomain, VercelDomainsError } from "@/lib/vercel-domains";
 import { detachLinksForHostname } from "@/lib/domain-state";
 import { invalidateDomainStatus } from "@/lib/domain-cache";
 import { invalidateDomainConfig } from "@/lib/domain-config-cache";
 import { deeplinkConfigSchema, hostnameSyntaxSchema } from "@/lib/validations";
+import { ownedDomainFilter } from "@/lib/domain-access";
 import { verificationRecordName } from "@/lib/dns-verify";
 import { vercelPointingRecord } from "@/lib/domains";
 
@@ -22,7 +23,7 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`domains-read:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("domains-read", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429, request);
   }
@@ -33,7 +34,7 @@ export async function GET(
 
     await connectDB();
 
-    const domain = await Domain.findOne({ hostname, owner: session.user.id }).lean();
+    const domain = await Domain.findOne(ownedDomainFilter(hostname, session.user.id, session.access)).lean();
     if (!domain) {
       return apiError("Domain not found", 404, request);
     }
@@ -111,7 +112,7 @@ export async function PATCH(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`domains-write:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("domains-write", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429, request);
   }
@@ -144,7 +145,7 @@ export async function PATCH(
 
     // Scoped to the owner, so another user's domain is a 404 rather than a 403:
     // the endpoint must not confirm that a hostname is claimed at all.
-    const domain = await Domain.findOne({ hostname, owner: session.user.id });
+    const domain = await Domain.findOne(ownedDomainFilter(hostname, session.user.id, session.access));
     if (!domain) {
       return apiError("Domain not found", 404, request);
     }
@@ -222,7 +223,7 @@ export async function DELETE(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`domains-delete:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("domains-delete", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429, request);
   }
@@ -235,7 +236,7 @@ export async function DELETE(
 
     await connectDB();
 
-    const domain = await Domain.findOne({ hostname, owner: session.user.id });
+    const domain = await Domain.findOne(ownedDomainFilter(hostname, session.user.id, session.access));
     if (!domain) {
       return apiError("Domain not found", 404, request);
     }

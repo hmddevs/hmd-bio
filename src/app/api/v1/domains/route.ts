@@ -4,12 +4,13 @@ import { Domain } from "@/models/Domain";
 import { domainSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { generateVerificationToken, detachLinksForHostname } from "@/lib/domain-state";
 import { invalidateDomainStatus } from "@/lib/domain-cache";
 import { verificationRecordName } from "@/lib/dns-verify";
 import { vercelPointingRecord } from "@/lib/domains";
+import { accessPermitsDomain, domainScopeFilter } from "@/lib/api-key-scope";
 import type { IDomain } from "@/models/Domain";
 
 /**
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`domains-list:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("domains-list", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429, request);
   }
@@ -100,8 +101,13 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     // Always scoped by owner, with no admin bypass: this listing returns
-    // verification tokens, which belong to the owner alone.
-    const domains = await Domain.find({ owner: session.user.id })
+    // verification tokens, which belong to the owner alone. A domain-restricted
+    // key is narrowed further still, for the same reason: it must not read
+    // another domain's token.
+    const domains = await Domain.find({
+      owner: session.user.id,
+      ...domainScopeFilter(session.access, "hostname"),
+    })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -124,7 +130,7 @@ export async function POST(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`domains-create:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("domains-create", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429, request);
   }
@@ -142,6 +148,18 @@ export async function POST(request: NextRequest) {
       return apiError(parsed.error.issues[0].message, 400, request);
     }
     const { hostname } = parsed.data;
+
+    // A domain-restricted key must not be able to widen its own reach by
+    // claiming a new hostname. The hostname being claimed is by definition not
+    // in the key's list, so the ordinary domain check refuses it; an
+    // unrestricted caller is unaffected.
+    if (!accessPermitsDomain(session.access, hostname)) {
+      return apiError(
+        "This API key is not permitted on that domain",
+        403,
+        request
+      );
+    }
 
     await connectDB();
 

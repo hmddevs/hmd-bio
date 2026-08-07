@@ -8,7 +8,7 @@ import { invalidateDomainStatus } from "@/lib/domain-cache";
 import { removeDomain, VercelDomainsError } from "@/lib/vercel-domains";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { sendApprovalEmail } from "@/lib/email";
 import { adminEditProfileSchema } from "@/lib/validations";
@@ -43,7 +43,7 @@ export async function PATCH(
     return apiError("Forbidden — admin access required", 403);
   }
 
-  const rl = await rateLimit(`admin-users:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("admin-users", session);
   if (!rl.allowed) return apiError("Too many requests", 429);
 
   try {
@@ -142,7 +142,7 @@ export async function DELETE(
     return apiError("Forbidden — admin access required", 403);
   }
 
-  const rl = await rateLimit(`admin-users:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("admin-users", session);
   if (!rl.allowed) return apiError("Too many requests", 429);
 
   try {

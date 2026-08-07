@@ -3,12 +3,13 @@ import { connectDB } from "@/lib/db";
 import { Domain, type IDomain } from "@/models/Domain";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { transition } from "@/lib/domain-state";
 import { verifyDomainTxt, verificationRecordName } from "@/lib/dns-verify";
 import { addDomain, getDomainStatus, VercelDomainsError } from "@/lib/vercel-domains";
 import { hostnameSyntaxSchema } from "@/lib/validations";
+import { ownedDomainFilter } from "@/lib/domain-access";
 
 /**
  * Certificate issuance is not instant, so the request polls Vercel a small,
@@ -58,7 +59,7 @@ export async function POST(
 
   // Six an hour: enough for a user fixing DNS, too few to walk someone else's
   // zone looking for records.
-  const rl = await rateLimit(`domains-verify:${session.user.id}`, {
+  const rl = await rateLimitCaller("domains-verify", session, {
     limit: 6,
     windowMs: 3_600_000,
   });
@@ -84,7 +85,7 @@ export async function POST(
 
     // Ownership comes from the query, not the path. A caller who knows
     // someone else's hostname gets the same 404 as one who invented it.
-    const domain = await Domain.findOne({ hostname, owner: session.user.id });
+    const domain = await Domain.findOne(ownedDomainFilter(hostname, session.user.id, session.access));
     if (!domain) {
       return apiError("Domain not found", 404, request);
     }

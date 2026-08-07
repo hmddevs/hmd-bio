@@ -3,8 +3,8 @@ import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { changePasswordSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { requireAuth, requireSession } from "@/lib/api-auth";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import bcrypt from "bcryptjs";
 
@@ -13,7 +13,17 @@ export async function PUT(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`change-password:${session.user.id}`, { tier: "authenticated" });
+  // The account password is a credential, and credential management is
+  // session-only for the same reason key management is: a key must not be able
+  // to alter the account it was issued from. The current password is still
+  // required below, so a key was never a takeover on its own, but it did make
+  // this endpoint an online guessing oracle that a revoked-key holder could
+  // drive, distinguishable by 403 against 200 and bounded only by the ordinary
+  // authenticated rate limit.
+  const notASession = requireSession(session);
+  if (notASession) return notASession;
+
+  const rl = await rateLimitCaller("change-password", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }

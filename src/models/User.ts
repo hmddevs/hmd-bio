@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { API_KEY_SCOPES, type ApiKeyScope } from "@/lib/api-key-scope";
 
 export interface IApiKey {
   _id: Types.ObjectId;
@@ -6,6 +7,20 @@ export interface IApiKey {
   prefix: string;
   label: string;
   createdAt: Date;
+  /**
+   * What the key may do. Absent on every key minted before scoping existed,
+   * and absent means full access, so those keys are unchanged. Interpreted by
+   * `resolveKeyScope` in `@/lib/api-key-scope`, never read directly.
+   */
+  scope?: ApiKeyScope | null;
+  /**
+   * Hostnames the key is confined to. Absent means every domain the account
+   * owns. Only ever written non-empty; see `resolveKeyDomains` for why an
+   * empty list must not be storable.
+   */
+  domains?: string[] | null;
+  /** Absent means the key never expires, which is what every legacy key does. */
+  expiresAt?: Date | null;
 }
 
 export interface IUser extends Document {
@@ -33,6 +48,18 @@ const ApiKeySchema = new Schema(
     prefix: { type: String, required: true },
     label: { type: String, default: "Default" },
     createdAt: { type: Date, default: Date.now },
+    // Every field below is `default: undefined` on purpose. A default value
+    // here would be materialised onto legacy keys the moment their parent
+    // document is loaded and re-saved, silently narrowing a key that is in
+    // production use. Absent has to stay absent, because absent is what
+    // `@/lib/api-key-scope` reads as "full access, no expiry".
+    //
+    // `domains` in particular: a Mongoose `[String]` path defaults to `[]`
+    // rather than undefined unless told otherwise, so omitting this line would
+    // stamp an empty list onto existing keys.
+    scope: { type: String, enum: API_KEY_SCOPES, default: undefined },
+    domains: { type: [String], default: undefined },
+    expiresAt: { type: Date, default: undefined },
   }
 );
 

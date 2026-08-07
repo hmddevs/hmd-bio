@@ -4,7 +4,7 @@ import { Link, LIVE_LINK_FILTER } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth, requireOwnership } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { domainFromQueryOrHost } from "@/lib/domain-access";
 import { buildShortUrl } from "@/lib/domains";
@@ -31,7 +31,7 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`stats-keyword:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("stats-keyword", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }
@@ -52,7 +52,7 @@ export async function GET(
       return apiError("Short URL not found", 404);
     }
 
-    const forbidden = requireOwnership(link, session);
+    const forbidden = requireOwnership(link, session, { notFoundMessage: "Short URL not found" });
     if (forbidden) return forbidden;
 
     // Every click aggregation below inherits this filter, so analytics can

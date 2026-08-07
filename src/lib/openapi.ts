@@ -100,8 +100,14 @@ export const openApiSpec = {
           },
           "403": {
             description:
-              "Turnstile token missing or invalid, or `domain` is not the primary domain and either " +
-              "the caller is unauthenticated or the domain is not an `active` Domain owned by the caller",
+              "Turnstile token missing or invalid; or `domain` is not the primary domain and either " +
+              "the caller is unauthenticated or the domain is not an `active` Domain owned by the " +
+              "caller; or the caller authenticated with an API key and one of its own restrictions " +
+              "blocks the request: a `read`-scoped key attempting this write (`This API key is " +
+              "read-only and cannot perform write operations`), or a domain-restricted key whose list " +
+              "does not include `domain` (`This API key is not permitted on that domain`, see " +
+              "`KeyDomainForbidden`). A refused key is answered with this 403 rather than falling back " +
+              "to the anonymous path.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -287,6 +293,11 @@ export const openApiSpec = {
       get: {
         tags: ["Links"],
         summary: "Get a link",
+        description:
+          "If the caller authenticated with a domain-restricted API key and this link lives outside " +
+          "the key's domains, the response is the ordinary 404 below, not a 403. A domain-restricted " +
+          "key must not be able to tell, by status code, that a link exists on a domain it cannot " +
+          "reach.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { $ref: "#/components/parameters/KeywordPath" },
@@ -335,7 +346,10 @@ export const openApiSpec = {
         summary: "Update a link",
         description:
           "Returns the whole updated document, so the deeplink fields (`targets`, `forwardPath`, " +
-          "`forwardQuery`) appear in the response even though POST /api/v1/shorten's response does not.",
+          "`forwardQuery`) appear in the response even though POST /api/v1/shorten's response does " +
+          "not. If the caller authenticated with a domain-restricted API key and this link lives " +
+          "outside the key's domains, the response is the ordinary 404 below, not a 403; see the note " +
+          "on GET for why.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { $ref: "#/components/parameters/KeywordPath" },
@@ -392,7 +406,10 @@ export const openApiSpec = {
       delete: {
         tags: ["Links"],
         summary: "Delete a link",
-        description: "Deletes the link and its click log.",
+        description:
+          "Deletes the link and its click log. If the caller authenticated with a domain-restricted " +
+          "API key and this link lives outside the key's domains, the response is the ordinary 404 " +
+          "below, not a 403; see the note on GET /api/v1/links/{keyword} for why.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { $ref: "#/components/parameters/KeywordPath" },
@@ -477,6 +494,14 @@ export const openApiSpec = {
       post: {
         tags: ["Links"],
         summary: "Generate a QR code for a link",
+        description:
+          "Generates the QR code as inline SVG. It changes nothing, but it is served over " +
+          "POST, and an API key's read or write scope is derived from the HTTP method. " +
+          "**A read-only key is therefore refused this endpoint with a 403.** Use a " +
+          "`write`-scoped key if your integration needs QR codes. This is a deliberate " +
+          "consequence of deriving scope from the method rather than from a per-endpoint " +
+          "annotation, which is what keeps a new endpoint from being left unprotected by " +
+          "an omission.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
         responses: {
@@ -581,6 +606,13 @@ export const openApiSpec = {
       post: {
         tags: ["Links"],
         summary: "Bulk-create links",
+        description:
+          "A domain-restricted API key does not fail the whole request when an item's `domain` " +
+          "falls outside its list; that item is skipped (`reason: \"You do not have an active " +
+          "domain with that hostname\"`), matching the existing per-item skip behaviour for a " +
+          "disallowed protocol or a taken keyword. The request as a whole is still refused with the " +
+          "401/403 below if the credential itself is not usable at all (e.g. a read-only key, since " +
+          "this is a write).",
         security: [{ session: [] }, { BearerAuth: [] }],
         requestBody: {
           required: true,
@@ -657,6 +689,7 @@ export const openApiSpec = {
           },
           "400": { $ref: "#/components/responses/ValidationError" },
           "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/KeyReadOnly" },
           "429": { $ref: "#/components/responses/RateLimited" },
           "500": { $ref: "#/components/responses/InternalError" },
         },
@@ -749,7 +782,11 @@ export const openApiSpec = {
       get: {
         tags: ["Account"],
         summary: "List your API keys",
-        description: "Full key values are never persisted or returned again after creation; only the stored prefix is shown, suffixed with `...`.",
+        description:
+          "Full key values are never persisted or returned again after creation; only the stored " +
+          "prefix is shown, suffixed with `...`. Session-only on every method: a Bearer API key " +
+          "cannot list, create, or revoke keys, which is what stops a leaked key from minting a " +
+          "broader replacement for itself or disclosing the account's other credentials.",
         security: [{ session: [] }],
         responses: {
           "200": {
@@ -767,15 +804,7 @@ export const openApiSpec = {
                           properties: {
                             keys: {
                               type: "array",
-                              items: {
-                                type: "object",
-                                properties: {
-                                  _id: { type: "string" },
-                                  label: { type: "string" },
-                                  key: { type: "string", example: "hmd_a1b2c3d4..." },
-                                  createdAt: { type: "string", format: "date-time" },
-                                },
-                              },
+                              items: { $ref: "#/components/schemas/ApiKeySummary" },
                             },
                           },
                         },
@@ -783,25 +812,74 @@ export const openApiSpec = {
                     },
                   ],
                 },
+                example: {
+                  success: true,
+                  statusCode: 200,
+                  data: {
+                    keys: [
+                      {
+                        _id: "64f1a2b3c4d5e6f7a8b9c0d1",
+                        label: "Default",
+                        key: "hmd_a1b2c3d4...",
+                        createdAt: "2026-07-02T10:00:00.000Z",
+                        scope: "write",
+                        domains: null,
+                        expiresAt: null,
+                        expired: false,
+                      },
+                    ],
+                  },
+                },
               },
             },
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/SessionOnly" },
           "404": { $ref: "#/components/responses/NotFound" },
         },
       },
       post: {
         tags: ["Account"],
         summary: "Create an API key",
-        description: "The raw key (`hmd_...`) is returned exactly once, in this response, and is never persisted or logged again.",
+        description:
+          "The raw key (`hmd_...`) is returned exactly once, in this response, and is never " +
+          "persisted or logged again. Session-only; see the note on GET for why.",
         security: [{ session: [] }],
         requestBody: {
           content: {
             "application/json": {
               schema: {
                 type: "object",
-                properties: { label: { type: "string", maxLength: 100, default: "Default" } },
+                properties: {
+                  label: { type: "string", maxLength: 100, default: "Default" },
+                  scope: {
+                    type: "string",
+                    enum: ["read", "write"],
+                    default: "write",
+                    description:
+                      "Omitted means `write`, matching every key granted before scoping existed. " +
+                      "`read` may only call GET/HEAD/OPTIONS.",
+                  },
+                  domains: {
+                    type: "array",
+                    items: { type: "string" },
+                    maxItems: 20,
+                    description:
+                      "Hostnames to confine the key to. Omitted or empty means every domain the " +
+                      "account owns (unrestricted). Each entry must be a domain the caller already " +
+                      "owns an `active` (or the primary) Domain record for; an unowned hostname is " +
+                      "refused with 400, not silently dropped.",
+                  },
+                  expiresAt: {
+                    type: "string",
+                    format: "date-time",
+                    description:
+                      "ISO 8601 instant with an explicit UTC offset, e.g. `2026-12-31T00:00:00Z`. " +
+                      "Must be in the future. Omitted means the key never expires.",
+                  },
+                },
               },
+              example: { label: "CI deploy key", scope: "write", domains: ["go.example.com"] },
             },
           },
         },
@@ -811,18 +889,46 @@ export const openApiSpec = {
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ApiSuccessEnvelope" },
-                example: { success: true, statusCode: 201, data: { key: "hmd_9f8e7d...", label: "Default" } },
+                example: {
+                  success: true,
+                  statusCode: 201,
+                  data: {
+                    key: "hmd_9f8e7d...",
+                    label: "CI deploy key",
+                    scope: "write",
+                    domains: ["go.example.com"],
+                    expiresAt: null,
+                    expired: false,
+                  },
+                },
               },
             },
           },
-          "400": { $ref: "#/components/responses/ValidationError" },
+          "400": {
+            description:
+              "Validation error (see `#/components/responses/ValidationError`), an `expiresAt` " +
+              "already in the past, or a hostname in `domains` that the caller does not own an " +
+              "`active` Domain record for",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: {
+                  success: false,
+                  statusCode: 400,
+                  error: "You do not have a domain with that hostname: go.example.com",
+                },
+              },
+            },
+          },
           "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/SessionOnly" },
           "500": { $ref: "#/components/responses/InternalError" },
         },
       },
       delete: {
         tags: ["Account"],
         summary: "Revoke an API key",
+        description: "Session-only; see the note on GET for why.",
         security: [{ session: [] }],
         requestBody: {
           content: {
@@ -855,6 +961,7 @@ export const openApiSpec = {
             },
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/SessionOnly" },
           "500": { $ref: "#/components/responses/InternalError" },
         },
       },
@@ -863,7 +970,9 @@ export const openApiSpec = {
       put: {
         tags: ["Account"],
         summary: "Change your password",
-        security: [{ session: [] }, { BearerAuth: [] }],
+        // Session-only. The account password is a credential, and a key must
+        // not be able to alter the account it was issued from.
+        security: [{ session: [] }],
         requestBody: {
           required: true,
           content: {
@@ -892,7 +1001,9 @@ export const openApiSpec = {
           "400": { $ref: "#/components/responses/ValidationError" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": {
-            description: "Current password is incorrect",
+            description:
+              "Current password is incorrect; or the caller authenticated with an API key, " +
+              "which this endpoint refuses whatever its scope (see `SessionOnly`).",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -1258,7 +1369,12 @@ export const openApiSpec = {
           "400": { $ref: "#/components/responses/ValidationError" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": {
-            description: "The per-user domain cap has been reached",
+            description:
+              "The per-user domain cap has been reached; or the caller authenticated with an API " +
+              "key and either it is `read`-scoped (this is a write, so `KeyReadOnly` applies) or it " +
+              "is domain-restricted and cannot, by definition, already include the hostname being " +
+              "newly claimed (`KeyDomainForbidden`). A domain-restricted key can never widen its " +
+              "own reach by claiming a hostname outside its list.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -1283,6 +1399,10 @@ export const openApiSpec = {
       get: {
         tags: ["Domains"],
         summary: "Get one domain",
+        description:
+          "If the caller authenticated with a domain-restricted API key and this hostname is outside " +
+          "its list, the response is the 404 below, not a 403. A domain-restricted key must not be " +
+          "able to tell, by status code, that a domain it cannot reach exists.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [{ $ref: "#/components/parameters/HostnamePath" }],
         responses: {
@@ -1350,7 +1470,9 @@ export const openApiSpec = {
           "which is a different thing from omitting it. `appLinks` is itself partial: sending only " +
           "`aasa` leaves `assetlinks` untouched, and vice versa: the two files are never overwritten " +
           "as a pair. May be called on a domain that is not yet `active`; nothing is served until it " +
-          "reaches that status regardless.",
+          "reaches that status regardless. If the caller authenticated with a domain-restricted API " +
+          "key and this hostname is outside its list, the response is the 404 below, not a 403; see " +
+          "the note on GET for why.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [{ $ref: "#/components/parameters/HostnamePath" }],
         requestBody: {
@@ -1409,6 +1531,7 @@ export const openApiSpec = {
             },
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/KeyReadOnly" },
           "404": {
             description: "No domain with that hostname owned by the caller",
             content: {
@@ -1427,7 +1550,9 @@ export const openApiSpec = {
         summary: "Remove a domain",
         description:
           "Detaches the hostname from Vercel and deletes the domain record. Links already created on " +
-          "it are kept, never deleted, but are stamped as detached and will stop resolving.",
+          "it are kept, never deleted, but are stamped as detached and will stop resolving. If the " +
+          "caller authenticated with a domain-restricted API key and this hostname is outside its " +
+          "list, the response is the 404 below, not a 403; see the note on GET for why.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [
           { $ref: "#/components/parameters/HostnamePath" },
@@ -1476,6 +1601,7 @@ export const openApiSpec = {
             },
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/KeyReadOnly" },
           "404": {
             description: "No domain with that hostname owned by the caller",
             content: {
@@ -1530,7 +1656,9 @@ export const openApiSpec = {
           "confirms it is active without re-checking anything, and calling it again on a `provisioning` " +
           "domain re-checks Vercel's status without re-reading the TXT record. Rate-limited to 6 " +
           "attempts per hour per user, stricter than the shared authenticated tier, since each call " +
-          "walks a DNS zone the caller claims to own.",
+          "walks a DNS zone the caller claims to own. If the caller authenticated with a domain-" +
+          "restricted API key and this hostname is outside its list, the response is the 404 below, " +
+          "not a 403.",
         security: [{ session: [] }, { BearerAuth: [] }],
         parameters: [{ $ref: "#/components/parameters/HostnamePath" }],
         responses: {
@@ -1618,7 +1746,9 @@ export const openApiSpec = {
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": {
-            description: "This domain is suspended",
+            description:
+              "This domain is suspended; or the caller authenticated with an API key that is " +
+              "`read`-scoped, since this is a write (see `KeyReadOnly`).",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -1670,7 +1800,7 @@ export const openApiSpec = {
         tags: ["Admin"],
         summary: "List users",
         description: "Admin-only. Supports pagination, a case-insensitive username/email search, and status filtering.",
-        security: [{ session: [] }, { BearerAuth: [] }],
+        security: [{ session: [] }],
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } },
@@ -1717,7 +1847,7 @@ export const openApiSpec = {
           "Admin-only. A single action-based endpoint rather than a general-purpose profile PATCH. " +
           "`approve` and `verify` clear the account's pending verification state; `approve` also emails " +
           "the user. An admin can never target their own account through this endpoint.",
-        security: [{ session: [] }, { BearerAuth: [] }],
+        security: [{ session: [] }],
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "string" }, description: "Target user's Mongo _id" },
         ],
@@ -1790,7 +1920,7 @@ export const openApiSpec = {
         description:
           "Admin-only. The user's links are kept but unlinked (`owner` set to null) rather than " +
           "deleted. An admin can never delete their own account through this endpoint.",
-        security: [{ session: [] }, { BearerAuth: [] }],
+        security: [{ session: [] }],
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "string" }, description: "Target user's Mongo _id" },
         ],
@@ -1852,11 +1982,12 @@ export const openApiSpec = {
         summary: "List clicks across all links, with the originating IP decrypted",
         description:
           "Admin-only. The only endpoint that decrypts and returns the raw IP address (from the " +
-          "AES-256-GCM-encrypted `ipIv`/`ipRaw` fields on Click) — every other surface only ever " +
-          "exposes the one-way analytics hash. Supports filtering by keyword, country, browser, and OS; " +
+          "AES-256-GCM-encrypted `ipIv`/`ipRaw` fields on Click). Every other surface only ever " +
+          "exposes the one-way analytics hash, and no surface returns the ciphertext itself. " +
+          "Supports filtering by keyword, country, browser, and OS; " +
           "there is deliberately no IP filter, since encrypted values cannot be matched without " +
           "decrypting every row first.",
-        security: [{ session: [] }, { BearerAuth: [] }],
+        security: [{ session: [] }],
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", default: 50, maximum: 100 } },
@@ -1906,7 +2037,7 @@ export const openApiSpec = {
         description:
           "Admin-only. Supports pagination, a case-insensitive hostname search, and status " +
           "filtering. Each domain is enriched with its owner's username and email.",
-        security: [{ session: [] }, { BearerAuth: [] }],
+        security: [{ session: [] }],
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } },
@@ -1961,7 +2092,7 @@ export const openApiSpec = {
           "`unsuspend` returns it to `active`. Re-issuing the same action on a domain already in that " +
           "state is a no-op success that does not overwrite the original `suspendedReason`/" +
           "`suspendedAt`.",
-        security: [{ session: [] }, { BearerAuth: [] }],
+        security: [{ session: [] }],
         parameters: [{ $ref: "#/components/parameters/HostnamePath" }],
         requestBody: {
           required: true,
@@ -2056,7 +2187,10 @@ export const openApiSpec = {
         },
       },
       Unauthorized: {
-        description: "No session cookie present",
+        description:
+          "No usable credential: no session cookie and no Bearer API key, or the key given is " +
+          "unrecognised, or it has expired. An expired key is treated as no credential at all, " +
+          "not as a credential the account still holds but has lost permission to use.",
         content: {
           "application/json": {
             schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -2065,7 +2199,13 @@ export const openApiSpec = {
         },
       },
       Forbidden: {
-        description: "Signed in, but the caller does not own this resource",
+        description:
+          "The credential is valid and identifies the caller's account, but is not permitted here: " +
+          "signed in (or a valid API key) but the caller does not own this resource. On a write " +
+          "(anything other than GET/HEAD/OPTIONS), the same 403 status is also returned, with a " +
+          "different message (`This API key is read-only and cannot perform write operations`), " +
+          "when the credential is an API key whose scope is `read`; that check runs before " +
+          "ownership is even looked up. See `KeyReadOnly` for that case documented on its own.",
         content: {
           "application/json": {
             schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -2074,11 +2214,57 @@ export const openApiSpec = {
         },
       },
       AdminOnly: {
-        description: "Signed in, but the caller's role is not `admin`",
+        description:
+          "Signed in with a valid credential, but the caller's role is not `admin`. An API key never " +
+          "carries its owner's admin privilege regardless of scope, so a key can never pass this " +
+          "check. On a write, a read-only key is refused with the `KeyReadOnly` 403 before this check " +
+          "is even reached, since the scope check runs first.",
         content: {
           "application/json": {
             schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
             example: { success: false, statusCode: 403, error: "Forbidden — admin access required" },
+          },
+        },
+      },
+      KeyReadOnly: {
+        description:
+          "The credential is a valid API key, but its scope is `read` and the request is a write " +
+          "(anything other than GET/HEAD/OPTIONS). Derived from the request method, not from a " +
+          "per-route annotation, so it applies uniformly to every write endpoint a key can reach.",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+            example: {
+              success: false,
+              statusCode: 403,
+              error: "This API key is read-only and cannot perform write operations",
+            },
+          },
+        },
+      },
+      KeyDomainForbidden: {
+        description:
+          "The credential is a valid, write-scoped API key restricted to a set of domains, and the " +
+          "hostname supplied at creation time (`domain` on a link, or `hostname` on a new domain " +
+          "claim) is not one of them. Distinct from the 404 an existing resource on a domain the key " +
+          "cannot reach returns: there is no existing resource here to hide the presence of, so a 403 " +
+          "does not leak anything.",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+            example: { success: false, statusCode: 403, error: "This API key is not permitted on that domain" },
+          },
+        },
+      },
+      SessionOnly: {
+        description:
+          "The request carried a Bearer API key, but this endpoint only ever accepts an interactive " +
+          "session cookie. Applies regardless of the key's scope: a key can never widen or replace " +
+          "itself, because it simply cannot reach the endpoint that would let it.",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+            example: { success: false, statusCode: 403, error: "This endpoint cannot be used with an API key" },
           },
         },
       },
@@ -2094,8 +2280,14 @@ export const openApiSpec = {
       RateLimited: {
         description:
           "Rate limit exceeded. Public endpoints allow 30 requests/minute per IP; " +
-          "session-authenticated endpoints allow 100 requests/minute per user, unless a " +
-          "stricter endpoint-specific limit is noted (e.g. the unlock endpoint's 5/minute).",
+          "authenticated endpoints allow 100 requests/minute per account, unless a " +
+          "stricter endpoint-specific limit is noted (e.g. the unlock endpoint's 5/minute). " +
+          "Requests made with an API key are limited twice, against nested buckets: the " +
+          "account ceiling above, and within it a per-key bucket of half that allowance. " +
+          "One key therefore cannot consume the whole account's allowance and starve the " +
+          "owner's dashboard or another key. The account total is unchanged, so several " +
+          "keys do not add throughput. When the per-key bucket is what refused, the limit " +
+          "reported is the key's, not the account's.",
         content: {
           "application/json": {
             schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -2128,6 +2320,34 @@ export const openApiSpec = {
           success: { type: "boolean", example: false },
           statusCode: { type: "integer" },
           error: { type: "string" },
+        },
+      },
+      ApiKeySummary: {
+        type: "object",
+        description:
+          "How a key is described back to its owner from GET/POST /api/v1/auth/api-keys. Mirrors " +
+          "the server's own resolution of the key so the dashboard can never show a key as more or " +
+          "less capable than it actually is.",
+        properties: {
+          _id: { type: "string" },
+          label: { type: "string" },
+          key: { type: "string", example: "hmd_a1b2c3d4...", description: "Masked; the stored prefix followed by `...`" },
+          createdAt: { type: "string", format: "date-time" },
+          scope: {
+            type: "string",
+            enum: ["read", "write", "none"],
+            description:
+              "`none` only appears for a key whose stored scope value is unrecognised (e.g. hand-" +
+              "edited in the database); such a key is refused everywhere.",
+          },
+          domains: {
+            type: "array",
+            items: { type: "string" },
+            nullable: true,
+            description: "`null` means unrestricted (every domain the account owns).",
+          },
+          expiresAt: { type: "string", format: "date-time", nullable: true },
+          expired: { type: "boolean", description: "True once `expiresAt` has passed, or if the key is otherwise unusable." },
         },
       },
       ShortenRequest: {
@@ -2674,12 +2894,17 @@ export const openApiSpec = {
         description:
           "Dashboard session cookie, issued on sign-in at /login. Accepted alongside a Bearer " +
           "API key (see BearerAuth) by /api/v1/links/**, /api/v1/stats/**, /api/v1/user/stats, " +
-          "/api/v1/admin/**, and /api/v1/auth/password. /api/v1/auth/api-keys and " +
-          "/api/v1/auth/email (and /email/confirm) are session-only by design — you shouldn't " +
-          "need an API key to manage API keys or change the account's own email. " +
-          "/api/v1/admin/** additionally requires the signed-in user's `role` to be `admin`; there " +
-          "is no separate security scheme for this, it's an in-handler check enforced after " +
-          "authentication succeeds. /api/v1/auth/signup, /api/v1/auth/verify, and " +
+          "/api/v1/domains/** and /api/v1/shorten. " +
+          "Session-only, refused with 403 for any API key whatever its scope: " +
+          "/api/v1/auth/api-keys, /api/v1/auth/password, and /api/v1/auth/email (with " +
+          "/email/confirm). These manage the account's own credentials, so a key must not be " +
+          "able to alter the account it was issued from. " +
+          "/api/v1/admin/** requires the signed-in user's `role` to be `admin`, which is an " +
+          "in-handler check enforced after authentication succeeds rather than a separate " +
+          "security scheme. An API key never satisfies it: a key-authenticated caller always " +
+          "runs as `user`, so administrative endpoints are unreachable by key even when the " +
+          "key's owner is an administrator. " +
+          "/api/v1/auth/signup, /api/v1/auth/verify, and " +
           "/api/v1/auth/resend-verification require no authentication at all.",
       },
       BearerAuth: {
@@ -2691,7 +2916,22 @@ export const openApiSpec = {
           "Accepted as an alternative to the session cookie everywhere `session` is listed above " +
           "(except the two session-only endpoints noted there). The key is validated by hashing " +
           "the provided value and comparing against the stored hash — the raw key itself is never " +
-          "persisted after creation.",
+          "persisted after creation.\n\n" +
+          "Every key carries a scope, an optional domain restriction, and an optional expiry, set " +
+          "at creation and shown back on GET /api/v1/auth/api-keys:\n" +
+          "- `scope` (`read` or `write`): `read` may only call GET/HEAD/OPTIONS; any other method " +
+          "against a `read` key is refused with a 403 (`This API key is read-only and cannot " +
+          "perform write operations`).\n" +
+          "- `domains` (array of hostnames, or `null`): when set, the key may only act on those " +
+          "domains. Creating a resource on a domain outside the list is refused with a 403 (`This " +
+          "API key is not permitted on that domain`); addressing an existing resource that lives " +
+          "outside the list is refused with the endpoint's ordinary 404, not 403, so the key cannot " +
+          "use the status code to learn that the resource exists elsewhere.\n" +
+          "- `expiresAt` (ISO 8601 date-time, or `null`): once past, the key is treated as no " +
+          "credential at all: a 401, not a 403, the same as an unrecognised key.\n\n" +
+          "Keys minted before scoping existed carry none of these fields. Absent is read as fully " +
+          "permissive: `write` scope, every domain the account owns, and no expiry, so an existing " +
+          "key's behaviour is unchanged by this addition.",
       },
     },
   },
