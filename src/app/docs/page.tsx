@@ -23,19 +23,19 @@ const tiers = [
 const domainSteps = [
   {
     title: "1. Claim the hostname",
-    body: "POST /api/v1/domains with the bare hostname you own. The response includes the TXT record you need to create.",
+    body: "POST /api/v1/domains with the bare hostname you own. The response carries both records you need: dnsRecord (ownership) and pointingRecord (traffic). Two DNS records are always required, and the domain does not go live until both exist.",
   },
   {
     title: "2. Add the TXT record",
-    body: "Create a TXT record at _hmd-verify.<yourdomain> with the value from step 1, at your DNS provider.",
+    body: "Create a TXT record at _hmd-verify.<yourdomain> with the value from dnsRecord, at your DNS provider. It proves ownership and nothing more.",
   },
   {
-    title: "3. Verify",
-    body: "POST /api/v1/domains/{hostname}/verify. This checks the TXT record, then attaches the domain to the platform.",
+    title: "3. Add the pointing record",
+    body: "Create the record from pointingRecord. For an apex domain such as example.com or guden.com.tr that is an A record on the domain itself, written as \"@\" at most providers. For a subdomain such as links.example.com it is a CNAME on the subdomain label. Never use a CNAME at an apex: it is invalid DNS and breaks the domain's other records. If your DNS runs behind a proxy such as Cloudflare, set this record to \"DNS only\" (grey cloud), because a proxied record hides the domain from us.",
   },
   {
-    title: "4. Point DNS at the platform",
-    body: "If the response comes back 202, add the CNAME (or A) records it lists, then call verify again once DNS has propagated.",
+    title: "4. Verify",
+    body: "POST /api/v1/domains/{hostname}/verify. This checks the TXT record, then attaches the domain. A 202 means ownership is confirmed but DNS is not pointing at us yet: check the record from step 3 and call verify again once DNS has propagated.",
   },
   {
     title: "5. Create links on it",

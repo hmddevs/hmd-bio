@@ -47,6 +47,11 @@ function asText(value: unknown, fallback = ""): string {
   return fallback;
 }
 
+/** One record from the API, or null when any of its fields is unusable. */
+function toDnsRecord(value: unknown): DnsRecord | null {
+  return toDnsRecords([value])[0] ?? null;
+}
+
 /** Drop any record whose fields are not renderable strings. */
 function toDnsRecords(value: unknown): DnsRecord[] {
   if (!Array.isArray(value)) return [];
@@ -75,6 +80,7 @@ interface DomainItem {
   failureReason: string | null;
   createdAt: string;
   dnsRecord: DnsRecord | null;
+  pointingRecord: DnsRecord | null;
 }
 
 const STATUS_META: Record<DomainStatus, { label: string; color: "default" | "info" | "warning" | "success" | "error" }> = {
@@ -114,6 +120,79 @@ function RecordRow({ label, value }: { label: string; value: string }) {
           <ContentCopyIcon fontSize="inherit" />
         </IconButton>
       </Tooltip>
+    </Box>
+  );
+}
+
+/** Type, name and value for one record, each with its own copy button. */
+function RecordFields({ record }: { record: DnsRecord }) {
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mt: 0.5 }}>
+      <RecordRow label="Type" value={record.recordType} />
+      <RecordRow label="Name" value={record.name} />
+      <RecordRow label="Value" value={record.value} />
+    </Box>
+  );
+}
+
+/**
+ * The full set of DNS work for a domain that is not live yet. Both records are
+ * always shown together: showing only the ownership record leaves people
+ * waiting for a domain that can never start serving traffic.
+ */
+function DnsSteps({
+  hostname,
+  txtRecord,
+  pointingRecord,
+}: {
+  hostname: string;
+  txtRecord: DnsRecord | null;
+  pointingRecord: DnsRecord | null;
+}) {
+  return (
+    <Box>
+      <Typography variant="body2" sx={{ mb: 1 }}>
+        Two DNS records are needed for <strong>{hostname}</strong>. Add both wherever you
+        manage DNS for the domain, which is usually your registrar or DNS host. The domain
+        will not go live until both exist.
+      </Typography>
+
+      {txtRecord && (
+        <Box sx={{ mb: 1.5 }}>
+          <Typography variant="body2" fontWeight={600}>
+            Step 1: prove you own the domain
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            A TXT record. It only proves ownership; on its own it does not make the domain
+            work.
+          </Typography>
+          <RecordFields record={txtRecord} />
+        </Box>
+      )}
+
+      {pointingRecord && (
+        <Box sx={{ mb: 1.5 }}>
+          <Typography variant="body2" fontWeight={600}>
+            Step 2: point the domain at us
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {pointingRecord.recordType === "A"
+              ? "An A record on the domain itself. Many DNS providers write the domain itself as \"@\"; if yours asks for a full hostname instead, enter the domain."
+              : "A CNAME record on the subdomain."}
+          </Typography>
+          <RecordFields record={pointingRecord} />
+        </Box>
+      )}
+
+      <Typography variant="caption" color="text.secondary" component="div">
+        If your DNS runs behind a proxy such as Cloudflare, set the step 2 record to
+        &ldquo;DNS only&rdquo; (the grey cloud, not the orange one). A proxied record hides
+        the domain from us and verification will keep failing.
+      </Typography>
+      <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+        DNS changes can take anywhere from a few minutes to an hour to take effect, and
+        nothing happens on our side until you check.
+      </Typography>
     </Box>
   );
 }
@@ -250,6 +329,17 @@ export default function DomainsPage() {
 
   const activeMenuDomain = domains.find((d) => d.hostname === menuAnchor?.hostname);
 
+  // Vercel does not always return recommended records, so fall back to the
+  // domain's own pointing record. There must be no path that says "add the
+  // record below" and then shows nothing.
+  const provisioningRecords: DnsRecord[] = (() => {
+    if (verifyResult?.outcome !== "provisioning") return [];
+    if (verifyResult.requiredRecords.length > 0) return verifyResult.requiredRecords;
+    const known = domains.find((d) => d.hostname === verifyResult.hostname);
+    const fallback = toDnsRecord(known?.pointingRecord);
+    return fallback ? [fallback] : [];
+  })();
+
   return (
     <Box sx={{ maxWidth: 720 }}>
       <Typography variant="h5" fontWeight={700} mb={1}>
@@ -287,20 +377,15 @@ export default function DomainsPage() {
             </Alert>
           )}
 
-          {justAdded?.dnsRecord && (
+          {justAdded && (
             <Alert severity="info" sx={{ mt: 2 }}>
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                Add this TXT record wherever you manage DNS for <strong>{justAdded.hostname}</strong>
-                {" "}(your domain registrar or DNS host). It proves you own the domain. DNS changes
-                can take anywhere from a few minutes to an hour to take effect, and nothing happens
-                on our side until you press &ldquo;Check now&rdquo; below.
-              </Typography>
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1 }}>
-                <RecordRow label="Type" value={justAdded.dnsRecord.recordType} />
-                <RecordRow label="Name" value={justAdded.dnsRecord.name} />
-                <RecordRow label="Value" value={justAdded.dnsRecord.value} />
-              </Box>
+              <DnsSteps
+                hostname={asText(justAdded.hostname)}
+                txtRecord={toDnsRecord(justAdded.dnsRecord)}
+                pointingRecord={toDnsRecord(justAdded.pointingRecord)}
+              />
               <Button
+                sx={{ mt: 1 }}
                 size="small"
                 variant="outlined"
                 startIcon={verifying === justAdded.hostname ? <CircularProgress size={14} /> : <RefreshIcon />}
@@ -335,16 +420,25 @@ export default function DomainsPage() {
             <Box>
               <Typography variant="body2" sx={{ mb: 1 }}>
                 Ownership of <strong>{verifyResult.hostname}</strong> is confirmed. One more step:
-                point the domain at us by adding the record below, then check again.
+                {provisioningRecords.length > 0
+                  ? " point the domain at us with the record below, then check again."
+                  : " point the domain at us with the step 2 record shown next to the domain below, then check again."}
               </Typography>
-              {verifyResult.requiredRecords.map((r, i) => (
-                <Box key={i} sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1 }}>
-                  <RecordRow label="Type" value={r.recordType} />
-                  <RecordRow label="Name" value={r.name} />
-                  <RecordRow label="Value" value={r.value} />
-                </Box>
+              {provisioningRecords.map((r, i) => (
+                <RecordFields key={i} record={r} />
               ))}
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                component="div"
+                sx={{ mt: 1 }}
+              >
+                If your DNS runs behind a proxy such as Cloudflare, set this record to
+                &ldquo;DNS only&rdquo; (the grey cloud). A proxied record hides the domain
+                from us.
+              </Typography>
               <Button
+                sx={{ mt: 1 }}
                 size="small"
                 variant="outlined"
                 startIcon={verifying === verifyResult.hostname ? <CircularProgress size={14} /> : <RefreshIcon />}
@@ -381,10 +475,13 @@ export default function DomainsPage() {
             <List disablePadding>
               {domains.map((d) => {
                 const meta = STATUS_META[d.status];
+                const txtRecord = toDnsRecord(d.dnsRecord);
+                const pointingRecord = toDnsRecord(d.pointingRecord);
+                const showSteps = d.status !== "active" && (txtRecord || pointingRecord);
                 return (
+                  <Box key={d.hostname}>
                   <ListItem
-                    key={d.hostname}
-                    divider
+                    divider={!showSteps}
                     secondaryAction={
                       <IconButton
                         edge="end"
@@ -417,6 +514,35 @@ export default function DomainsPage() {
                       }
                     />
                   </ListItem>
+                  {showSteps && (
+                    <Box
+                      sx={{
+                        px: 2,
+                        pb: 2,
+                        borderBottom: 1,
+                        borderColor: "divider",
+                      }}
+                    >
+                      <DnsSteps
+                        hostname={d.hostname}
+                        txtRecord={txtRecord}
+                        pointingRecord={pointingRecord}
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        sx={{ mt: 1 }}
+                        startIcon={
+                          verifying === d.hostname ? <CircularProgress size={14} /> : <RefreshIcon />
+                        }
+                        disabled={verifying === d.hostname}
+                        onClick={() => handleVerify(d.hostname)}
+                      >
+                        Check now
+                      </Button>
+                    </Box>
+                  )}
+                  </Box>
                 );
               })}
             </List>
