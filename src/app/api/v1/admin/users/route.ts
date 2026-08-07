@@ -4,7 +4,7 @@ import { User } from "@/models/User";
 import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 
 export async function GET(request: NextRequest) {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     return apiError("Forbidden — admin access required", 403);
   }
 
-  const rl = await rateLimit(`admin-users:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("admin-users", session);
   if (!rl.allowed) return apiError("Too many requests", 429);
 
   try {

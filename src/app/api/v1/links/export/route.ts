@@ -3,7 +3,8 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { domainScopeFilter } from "@/lib/api-key-scope";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 
 // Neutralise leading characters that spreadsheet apps (Excel/Sheets) treat
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`links-export:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("links-export", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }
@@ -43,6 +44,9 @@ export async function GET(request: NextRequest) {
     if (session.user.role !== "admin") {
       filter.owner = session.user.id;
     }
+    // A domain-restricted key must not export links from the owner's other
+    // domains. Empty for every unrestricted caller.
+    Object.assign(filter, domainScopeFilter(session.access));
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

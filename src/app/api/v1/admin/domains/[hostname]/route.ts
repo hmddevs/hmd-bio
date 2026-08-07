@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Domain } from "@/models/Domain";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { normaliseHost } from "@/lib/domains";
 import { transition, IllegalDomainTransitionError } from "@/lib/domain-state";
@@ -23,7 +23,7 @@ export async function PATCH(
     return apiError("Forbidden — admin access required", 403);
   }
 
-  const rl = await rateLimit(`admin-domains-patch:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("admin-domains-patch", session);
   if (!rl.allowed) return apiError("Too many requests", 429);
 
   try {

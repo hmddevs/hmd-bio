@@ -34,11 +34,24 @@ always-current sources below rather than duplicating them.
   `POST /api/v1/auth/api-keys` (requires an existing session). Keys are
   shown in full exactly once at creation and stored hashed thereafter —
   there is no way to retrieve a lost key, only revoke and reissue.
+- **API key scoping**: a key carries a `scope` of `read` or `write`, an
+  optional `domains` restriction limiting it to specific hostnames the
+  account owns, and an optional `expiresAt`. A read-only key is refused any
+  request other than `GET`, `HEAD` or `OPTIONS`. Keys issued before scoping
+  existed carry none of these fields and behave as full access on every
+  domain, never expiring. No key can create, list or revoke API keys, and no
+  key carries its owner's administrator privileges.
 - Public endpoints (`/shorten`, `/expand`, `/stats/[keyword]` for links the
   caller doesn't own) work without authentication. Endpoints that manage a
   specific account's links, exports, or API keys require a session or
-  Bearer key and return `401 Unauthorized` otherwise, or `403 Forbidden`
-  when authenticated but not the resource owner.
+  Bearer key.
+- `401 Unauthorized` means no usable credential: none supplied, unrecognised,
+  or expired. `403 Forbidden` means the credential is valid but not
+  permitted: not the resource owner, a read-only key attempting a write, a
+  key used on a domain it is not scoped to, or a key used on a session-only
+  endpoint. A domain-restricted key addressing an existing link or domain
+  outside its scope gets the ordinary `404`, not a `403`, so it cannot use
+  the status code to discover that the resource exists.
 
 ## Rate limits
 
@@ -46,10 +59,17 @@ Sliding-window limits apply per caller, enforced via Upstash Redis with a
 graceful in-memory fallback if Redis is unreachable (requests are never
 left unlimited, nor do they fail, when the fallback is active):
 
-- Public/unauthenticated: 30 requests/minute
-- Authenticated (session or API key): 100 requests/minute
+- Public/unauthenticated: 30 requests/minute per IP
+- Authenticated (session or API key): 100 requests/minute per account
+- Per API key: 50 requests/minute, nested inside the account ceiling above
 
-Exceeding the limit returns `429 Too Many Requests`.
+The per-key bucket sits inside the account bucket rather than beside it, so
+several keys do not increase an account's throughput. It exists so that one
+key cannot consume the whole allowance and starve the owner's dashboard or
+another key. A session and a key on the same account count separately against
+the inner bucket, but share the outer one.
+
+Exceeding either limit returns `429 Too Many Requests`.
 
 ## Core endpoints
 

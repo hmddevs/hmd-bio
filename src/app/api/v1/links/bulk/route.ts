@@ -5,7 +5,7 @@ import { Domain } from "@/models/Domain";
 import { bulkImportSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { generateKeyword, isReservedKeyword, isAllowedProtocol } from "@/lib/utils";
 import { checkDomainWritable } from "@/lib/domain-access";
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rl = await rateLimit(`links-bulk:${session.user.id}`, { tier: "authenticated" });
+  const rl = await rateLimitCaller("links-bulk", session);
   if (!rl.allowed) {
     return apiError("Too many requests", 429);
   }
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     async function canWriteTo(domain: string): Promise<boolean> {
       const cached = domainAccess.get(domain);
       if (cached !== undefined) return cached;
-      const check = await checkDomainWritable(domain, session.user.id);
+      const check = await checkDomainWritable(domain, session.user.id, session.access);
       domainAccess.set(domain, check.ok);
       return check.ok;
     }

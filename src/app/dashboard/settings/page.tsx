@@ -21,16 +21,42 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  ToggleButton,
+  ToggleButtonGroup,
+  Chip,
+  Autocomplete,
+  Stack,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { captureError } from "@/lib/errors";
+
+/** The account's own domain plus the primary domain, always offered as a scoping option. */
+const PRIMARY_DOMAIN = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN || "hmd.bio";
+
+type ApiKeyScope = "read" | "write" | "none";
 
 interface ApiKey {
   _id: string;
   key: string;
   label: string;
   createdAt: string;
+  scope: ApiKeyScope;
+  domains: string[] | null;
+  expiresAt: string | null;
+  expired: boolean;
+}
+
+interface OwnedDomain {
+  hostname: string;
+  status: string;
+}
+
+/** Human-readable description of what a key can do, for the list row. */
+function describeScope(scope: ApiKeyScope): string {
+  if (scope === "write") return "Read and write";
+  if (scope === "read") return "Read-only";
+  return "No access";
 }
 
 export default function UserSettingsPage() {
@@ -46,7 +72,14 @@ export default function UserSettingsPage() {
   // API Keys
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [newKeyLabel, setNewKeyLabel] = useState("");
+  // Defaults to read-only here, at the point where the choice is visible, even
+  // though the API itself defaults to write for backwards compatibility.
+  const [newKeyScope, setNewKeyScope] = useState<"read" | "write">("read");
+  const [newKeyDomains, setNewKeyDomains] = useState<string[]>([]);
+  const [newKeyExpiry, setNewKeyExpiry] = useState("");
+  const [ownedDomains, setOwnedDomains] = useState<OwnedDomain[]>([]);
   const [newKeyResult, setNewKeyResult] = useState("");
+  const [keyError, setKeyError] = useState("");
   const [keysLoading, setKeysLoading] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -68,9 +101,21 @@ export default function UserSettingsPage() {
     setKeysLoading(false);
   }
 
+  async function loadOwnedDomains() {
+    try {
+      const res = await fetch("/api/v1/domains");
+      const data = await res.json();
+      if (data.success) setOwnedDomains(data.data?.domains ?? []);
+    } catch (err) {
+      captureError(err, { route: "dashboard/settings", action: "loadOwnedDomains" });
+    }
+  }
+
   useEffect(() => {
+    if (tab !== 2) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on tab change
-    if (tab === 2) loadKeys();
+    loadKeys();
+    loadOwnedDomains();
   }, [tab]);
 
   async function handlePasswordChange() {
@@ -103,20 +148,43 @@ export default function UserSettingsPage() {
 
   async function handleCreateKey() {
     if (!newKeyLabel.trim()) return;
+    setKeyError("");
+
+    let expiresAt: string | undefined;
+    if (newKeyExpiry) {
+      const parsed = new Date(newKeyExpiry);
+      if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+        setKeyError("Expiry must be a valid date in the future");
+        return;
+      }
+      expiresAt = parsed.toISOString();
+    }
+
     try {
       const res = await fetch("/api/v1/auth/api-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: newKeyLabel.trim() }),
+        body: JSON.stringify({
+          label: newKeyLabel.trim(),
+          scope: newKeyScope,
+          ...(newKeyDomains.length > 0 ? { domains: newKeyDomains } : {}),
+          ...(expiresAt ? { expiresAt } : {}),
+        }),
       });
       const data = await res.json();
       if (data.success) {
         setNewKeyResult(data.data.key);
         setNewKeyLabel("");
+        setNewKeyScope("read");
+        setNewKeyDomains([]);
+        setNewKeyExpiry("");
         loadKeys();
+      } else {
+        setKeyError(data.error || "Could not create API key");
       }
     } catch (err) {
       captureError(err, { route: "dashboard/settings", action: "createKey" });
+      setKeyError("Network error");
     }
   }
 
@@ -249,21 +317,75 @@ export default function UserSettingsPage() {
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <Typography variant="body2" color="text.secondary">
                 API keys allow external services to create short URLs on your behalf.
-                Include the key as a <code>X-API-Key</code> header or <code>apiKey</code> query parameter.
+                Send the key as <code>Authorization: Bearer hmd_...</code>. It is the only
+                accepted channel: a key must never be put in a query string, where it would
+                be recorded in access logs and referrer headers.
               </Typography>
 
-              <Box sx={{ display: "flex", gap: 1 }}>
+              <Stack spacing={1.5}>
                 <TextField
                   size="small"
                   placeholder="Key label (e.g. Production)"
                   value={newKeyLabel}
                   onChange={(e) => setNewKeyLabel(e.target.value)}
-                  sx={{ flex: 1 }}
+                  fullWidth
                 />
-                <Button variant="contained" size="small" onClick={handleCreateKey}>
+
+                <Box>
+                  <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                    Access
+                  </Typography>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={newKeyScope}
+                    onChange={(_, value) => value && setNewKeyScope(value)}
+                  >
+                    <ToggleButton value="read">Read-only</ToggleButton>
+                    <ToggleButton value="write">Read and write</ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
+
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={Array.from(
+                    new Set([PRIMARY_DOMAIN, ...ownedDomains.map((d) => d.hostname)])
+                  )}
+                  value={newKeyDomains}
+                  onChange={(_, value) => setNewKeyDomains(value)}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option, index) => (
+                      <Chip size="small" label={option} {...getTagProps({ index })} key={option} />
+                    ))
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Domains"
+                      placeholder={newKeyDomains.length === 0 ? "All domains" : undefined}
+                      helperText="Leave empty to allow all domains you own"
+                    />
+                  )}
+                />
+
+                <TextField
+                  size="small"
+                  type="date"
+                  label="Expires"
+                  value={newKeyExpiry}
+                  onChange={(e) => setNewKeyExpiry(e.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  helperText="Optional, leave blank for a key that never expires"
+                  sx={{ maxWidth: 240 }}
+                />
+
+                {keyError && <Alert severity="error">{keyError}</Alert>}
+
+                <Button variant="contained" size="small" onClick={handleCreateKey} sx={{ alignSelf: "flex-start" }}>
                   Create
                 </Button>
-              </Box>
+              </Stack>
 
               {newKeyResult && (
                 <Alert
@@ -297,6 +419,7 @@ export default function UserSettingsPage() {
                     <ListItem
                       key={k._id}
                       divider
+                      alignItems="flex-start"
                       secondaryAction={
                         <Tooltip title="Revoke">
                           <IconButton edge="end" color="error" onClick={() => setDeleteId(k._id)}>
@@ -306,7 +429,18 @@ export default function UserSettingsPage() {
                       }
                     >
                       <ListItemText
-                        primary={k.label}
+                        primary={
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                            {k.label}
+                            <Chip
+                              size="small"
+                              label={describeScope(k.scope)}
+                              color={k.scope === "write" ? "primary" : "default"}
+                              variant="outlined"
+                            />
+                            {k.expired && <Chip size="small" label="Expired" color="error" />}
+                          </Box>
+                        }
                         secondary={
                           <>
                             <Typography variant="caption" fontFamily="monospace" component="span">
@@ -314,6 +448,12 @@ export default function UserSettingsPage() {
                             </Typography>
                             {" · "}
                             Created {new Date(k.createdAt).toLocaleDateString()}
+                            {" · "}
+                            {k.domains === null ? "All domains" : k.domains.join(", ")}
+                            {" · "}
+                            {k.expiresAt
+                              ? `Expires ${new Date(k.expiresAt).toLocaleDateString()}`
+                              : "Never expires"}
                           </>
                         }
                       />

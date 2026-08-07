@@ -13,6 +13,11 @@ import type { NextRequest } from "next/server";
 import { Domain } from "@/models/Domain";
 import { PRIMARY_DOMAIN, domainFromHost, normaliseHost } from "@/lib/domains";
 import { domainQuerySchema } from "@/lib/validations";
+import {
+  accessPermitsDomain,
+  domainScopeFilter,
+  type CallerAccess,
+} from "@/lib/api-key-scope";
 
 /**
  * Reads `?domain=` from a request that addresses one specific link.
@@ -59,6 +64,33 @@ export function domainFromQueryOrHost(request: NextRequest): string | null {
   return parsed.data.domain ?? PRIMARY_DOMAIN;
 }
 
+/**
+ * A Mongoose filter matching one hostname owned by this caller, narrowed by
+ * any per-key domain restriction.
+ *
+ * The domain routes address a Domain document by hostname and enforce
+ * ownership through the query itself (`{ hostname, owner }`), so that an
+ * unowned hostname is a 404 rather than a 403 and the endpoint never confirms
+ * a hostname is claimed. Folding the key's restriction into the same filter
+ * keeps that property: a domain the key may not touch is indistinguishable
+ * from one that does not exist.
+ *
+ * Every route that loads a single Domain must build its filter here rather
+ * than inlining `{ hostname, owner }`, so the restriction cannot be omitted at
+ * one of them.
+ */
+export function ownedDomainFilter(
+  hostname: string,
+  userId: string,
+  access: CallerAccess
+): Record<string, unknown> {
+  return {
+    hostname,
+    owner: userId,
+    ...domainScopeFilter(access, "hostname"),
+  };
+}
+
 export type DomainWriteCheck =
   | { ok: true; domain: string }
   | { ok: false; status: 400 | 403; message: string };
@@ -74,14 +106,32 @@ export type DomainWriteCheck =
  *
  * Ownership and status are checked in the same query, so a caller can never
  * learn whether someone else's domain exists: both cases return the same 403.
+ *
+ * `access` is the credential's own restriction, and is checked before
+ * ownership. This is the create-side counterpart to `requireOwnership`: there
+ * is no document to inspect yet, so the domain the caller asked for is checked
+ * directly. Passing `undefined` means an anonymous caller, who has no key and
+ * so no restriction, and is already confined to the primary domain below.
  */
 export async function checkDomainWritable(
   hostname: string,
-  userId: string | null | undefined
+  userId: string | null | undefined,
+  access?: CallerAccess
 ): Promise<DomainWriteCheck> {
   const domain = normaliseHost(hostname);
   if (!domain) {
     return { ok: false, status: 400, message: "Invalid domain" };
+  }
+
+  // Applies to the primary domain too: a key confined to a custom domain must
+  // not be able to create links on hmd.bio either, so this sits above the
+  // primary-domain shortcut.
+  if (access && !accessPermitsDomain(access, domain)) {
+    return {
+      ok: false,
+      status: 403,
+      message: "This API key is not permitted on that domain",
+    };
   }
 
   if (domain === PRIMARY_DOMAIN) {

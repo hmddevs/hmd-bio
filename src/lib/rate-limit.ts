@@ -22,6 +22,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import type { Redis } from "@upstash/redis";
 import { getRedis } from "@/lib/redis";
 import { captureError } from "@/lib/errors";
+import type { CallerAccess } from "@/lib/api-key-scope";
 
 export type RateLimitTier = "public" | "authenticated";
 
@@ -126,6 +127,99 @@ function memoryRateLimit(key: string, limit: number, windowMs: number): RateLimi
 }
 
 // --- Public API ----------------------------------------------------------
+
+/**
+ * The share of an account's ceiling that any one API key may consume.
+ *
+ * The tier limits above are untouched: this only divides the existing
+ * authenticated allowance, it does not add to it. Half is chosen so that a
+ * single key can never take the whole account's allowance and leave the owner's
+ * dashboard with nothing.
+ *
+ * Note the limit of this, honestly: with no cap on how many keys an account may
+ * hold, two or more active keys can still exhaust the outer ceiling between
+ * them. This bounds one key, not all keys collectively.
+ */
+const KEY_SHARE_OF_ACCOUNT = 0.5;
+
+/** Identity the caller-scoped limiter needs. Structural, to avoid an import cycle. */
+export interface RateLimitedCaller {
+  user: { id: string };
+  access: CallerAccess;
+}
+
+export interface CallerBucketKeys {
+  /** The account ceiling. Always checked. */
+  outer: string;
+  /** The per-key bucket nested inside it, or null for a session. */
+  inner: string | null;
+}
+
+/**
+ * The one place a caller-scoped bucket key is derived.
+ *
+ * Twenty routes used to build `${scope}:${session.user.id}` by hand. A restated
+ * derivation is the failure this codebase has produced repeatedly, so the
+ * string is assembled here and nowhere else.
+ *
+ * The outer key keeps exactly the format it had, `${scope}:${userId}`, so no
+ * live bucket resets on deploy and a session's behaviour is bit-identical to
+ * before. The inner key carries the account id as well as the key id, so it
+ * cannot collide with the outer key and does not rely on key ids being unique
+ * across accounts to keep two accounts independent.
+ */
+export function callerBucketKeys(
+  scope: string,
+  caller: RateLimitedCaller
+): CallerBucketKeys {
+  const outer = `${scope}:${caller.user.id}`;
+
+  // Keyed on the key's own id, so a session and a key on the same account land
+  // in different inner buckets, and so do two keys on one account. A key with
+  // no id (which resolveKeyAccess allows, for a document written without one)
+  // gets no inner bucket rather than sharing one with every other such key.
+  if (caller.access.via !== "api-key" || !caller.access.keyId) {
+    return { outer, inner: null };
+  }
+  return { outer, inner: `${scope}:${caller.user.id}:key:${caller.access.keyId}` };
+}
+
+/**
+ * Rate limit a request against the caller's nested buckets.
+ *
+ * Two levels: a per-key bucket at `KEY_SHARE_OF_ACCOUNT` of the tier limit,
+ * nested inside the account ceiling at the full tier limit. The account total
+ * is therefore unchanged, while one key can no longer consume all of it.
+ *
+ * The inner bucket is checked FIRST, and the outer is only consumed once the
+ * inner has allowed the request. Doing it the other way round looks equivalent
+ * and is not: a key hammering well past its own share would still burn a token
+ * off the account ceiling on every refused attempt, so it could exhaust the
+ * account and starve the owner's dashboard despite being throttled itself.
+ * That defeats the entire purpose of the nesting, and the tests cover it.
+ */
+export async function rateLimitCaller(
+  scope: string,
+  caller: RateLimitedCaller,
+  options: RateLimitOptions = { tier: "authenticated" }
+): Promise<RateLimitResult> {
+  const { outer, inner } = callerBucketKeys(scope, caller);
+
+  if (inner !== null) {
+    const { limit, windowMs } = resolveConfig(options);
+    const innerResult = await rateLimit(inner, {
+      // `max(1, ...)` so a route with an explicit limit of 1 does not floor to
+      // zero and refuse a key outright.
+      limit: Math.max(1, Math.floor(limit * KEY_SHARE_OF_ACCOUNT)),
+      windowMs,
+    });
+    // Report the inner limit and retry delay, which is what actually applies to
+    // this caller, rather than the account's.
+    if (!innerResult.allowed) return innerResult;
+  }
+
+  return rateLimit(outer, options);
+}
 
 export async function rateLimit(
   key: string,

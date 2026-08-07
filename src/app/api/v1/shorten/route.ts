@@ -5,7 +5,7 @@ import { shortenSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest, requireTurnstile } from "@/lib/auth";
 import { hashIP, encryptIP } from "@/lib/ip";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit, rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { Domain } from "@/models/Domain";
 import { checkDomainWritable } from "@/lib/domain-access";
@@ -50,7 +50,15 @@ export async function POST(request: NextRequest) {
     // Identity must be established before Turnstile is decided: an authenticated
     // caller (session or API key) is already accountable for their requests, so
     // only an anonymous caller needs the human-verification gate.
-    const user = await authenticateRequest(request);
+    //
+    // A refused key must be answered, never treated as anonymous. Falling
+    // through would let a read-only key create links by simply passing a
+    // Turnstile token, which is the opposite of what its scope says.
+    const authResult = await authenticateRequest(request);
+    if (!authResult.ok && authResult.reason === "forbidden-scope") {
+      return apiError("This API key is read-only and cannot perform write operations", 403);
+    }
+    const user = authResult.ok ? authResult.caller : null;
 
     // Cloudflare Turnstile verification: rejects a missing/invalid token
     // whenever TURNSTILE_SECRET_KEY is configured, skips only in dev mode.
@@ -73,8 +81,14 @@ export async function POST(request: NextRequest) {
     // authenticated caller gets their own bucket at the authenticated rate,
     // matching every other /api/v1 route; keying them by IP would throttle a
     // whole office or NAT down to one user's allowance.
+    //
+    // This is the one authenticated route that does not hold an `AuthSession`,
+    // because it also serves anonymous callers. It still goes through
+    // `rateLimitCaller` rather than building its own key, so a key gets its own
+    // nested bucket here exactly as it does everywhere else. The scope string
+    // keeps the bucket it already had, `shorten:user:<id>`.
     const rl = user
-      ? await rateLimit(`shorten:user:${user.id}`, { tier: "authenticated" })
+      ? await rateLimitCaller("shorten:user", { user: { id: user.id }, access: user.access })
       : await rateLimit(`shorten:${ipHash}`, { tier: "public" });
     if (!rl.allowed) {
       return apiError("Too many requests", 429);
@@ -85,7 +99,7 @@ export async function POST(request: NextRequest) {
     // A non-primary domain must belong to the caller and be active. Anonymous
     // callers are refused outright, so the public shortener can only ever write
     // to the primary domain.
-    const access = await checkDomainWritable(domain, user?.id ?? null);
+    const access = await checkDomainWritable(domain, user?.id ?? null, user?.access);
     if (!access.ok) {
       return apiError(access.message, access.status);
     }

@@ -70,11 +70,35 @@ start swallowing short links.
 A key grants full account access, never expires, and cannot be restricted. Too
 weak to hand to a third party.
 
-- [ ] Per-key scopes, at minimum read-only versus read-write.
-- [ ] Optional per-domain restriction.
-- [ ] Optional expiry.
-- [ ] Enforced in `authenticateRequest`, not at each call site.
-- [ ] Backwards compatible: existing keys keep working as full-access.
+- [x] Per-key scopes, read-only versus read-write. Two values, not a resource
+      set: the required scope is derived from the request method inside
+      `authenticateRequest`, so a route added later is covered without anyone
+      remembering to annotate it. A resource set would have needed exactly the
+      per-route declaration that produced the reserved-keyword drift.
+- [x] Optional per-domain restriction. Enforced at three points, each of which
+      a route already had to pass through: `requireOwnership` for a single
+      link or domain, `ownedDomainFilter` for a Domain addressed by hostname,
+      and `checkDomainWritable` when creating. List endpoints spread
+      `domainScopeFilter` into their query.
+- [x] Optional expiry. An expired key is a 401, not a 403: an expired
+      credential is no credential. An unreadable expiry is treated as expired.
+- [x] Enforced in `authenticateRequest`, not at each call site. The scope
+      decision itself is a pure module, `src/lib/api-key-scope.ts`, with 47
+      tests over it.
+- [x] Backwards compatible: existing keys keep working as full-access. Absent
+      means unrestricted throughout, every new schema path is
+      `default: undefined` so Mongoose cannot stamp a value onto a legacy key,
+      and two tests assert that against the real schema rather than a mock.
+- [x] Escalation closed. A key cannot mint, list or revoke keys at all
+      (session-only, refused on `via` rather than on scope), and never carries
+      its owner's admin role: `authenticateRequest` downgrades a key caller to
+      `role: "user"`, which disarms all eight inline admin checks at once.
+
+One deliberate behaviour change, called out because it is not additive: an
+administrator's existing API key can no longer reach `/api/v1/admin/**`, nor
+use the admin bypass in `requireOwnership`, nor list other users' links via
+`/api/v1/links`. That is the point of the requirement, but it is the one way a
+live key behaves differently after this change.
 
 ## P2. Audit logging
 
