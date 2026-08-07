@@ -8,3 +8,5 @@ export { Option } from "./Option";
 export type { IOption } from "./Option";
 export { User } from "./User";
 export type { IUser } from "./User";
+export { AuditLog, AuditLogImmutableError } from "./AuditLog";
+export type { IAuditLog } from "./AuditLog";

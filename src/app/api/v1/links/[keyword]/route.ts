@@ -7,6 +7,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth, requireOwnership } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
+import { recordAudit } from "@/lib/audit";
 import { isReservedKeyword } from "@/lib/utils";
 import { domainFromQuery } from "@/lib/domain-access";
 import { PRIMARY_DOMAIN, buildShortUrl } from "@/lib/domains";
@@ -185,10 +186,35 @@ export async function DELETE(
   const forbidden = requireOwnership(existing, session);
   if (forbidden) return forbidden;
 
+  const ownerId = existing.owner ? existing.owner.toString() : null;
+
   await Link.deleteOne({ domain, keyword });
 
   // Also remove click logs, scoped to the same domain.
-  await Click.deleteMany({ domain, keyword });
+  const removedClicks = await Click.deleteMany({ domain, keyword });
+
+  // Not an /admin route, but `requireOwnership` lets an administrator through
+  // on somebody else's link, so this is the one destructive administrative
+  // action that does not live under /api/v1/admin. Deleting the link destroys
+  // its clicks too, which is the very data the audit trail exists to account
+  // for. A user deleting their own link is ordinary self-service and is not
+  // recorded.
+  if (session.user.role === "admin" && ownerId !== session.user.id) {
+    await recordAudit({
+      request,
+      actor: session.user,
+      action: "admin.link.delete",
+      subjectType: "link",
+      subjectIds: [`${domain} ${keyword}`],
+      route: "links/[keyword]:DELETE",
+      detail: {
+        domain,
+        keyword,
+        owner: ownerId,
+        clicksDeleted: removedClicks.deletedCount ?? 0,
+      },
+    });
+  }
 
   return apiSuccess({ deleted: keyword, domain });
 }

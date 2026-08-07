@@ -12,6 +12,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { sendApprovalEmail } from "@/lib/email";
 import { adminEditProfileSchema } from "@/lib/validations";
+import { recordAudit, type AuditAction } from "@/lib/audit";
 import mongoose from "mongoose";
 
 // Deleting a user detaches each of their domains from Vercel one at a time,
@@ -31,6 +32,20 @@ const VALID_ACTIONS = new Set([
   "demote",
   "editProfile",
 ]);
+
+// Every administrative change to somebody else's account is recorded, not only
+// deletion. Disabling hides an account from its owner and promoting hands out
+// administrative access, which is exactly what an investigation into a
+// compromised admin account needs to be able to see.
+const AUDIT_ACTIONS_BY_ADMIN_ACTION: Record<string, AuditAction> = {
+  approve: "admin.user.approve",
+  disable: "admin.user.disable",
+  enable: "admin.user.enable",
+  verify: "admin.user.verify",
+  promote: "admin.user.promote",
+  demote: "admin.user.demote",
+  editProfile: "admin.user.edit_profile",
+};
 
 export async function PATCH(
   request: NextRequest,
@@ -67,6 +82,14 @@ export async function PATCH(
     if (target._id.toString() === session.user.id) {
       return apiError("Cannot modify your own account this way", 400);
     }
+
+    const before = {
+      status: target.status,
+      role: target.role,
+      isVerified: target.isVerified,
+      username: target.username,
+      email: target.email,
+    };
 
     switch (action) {
       case "approve":
@@ -116,6 +139,30 @@ export async function PATCH(
     }
 
     await target.save();
+
+    await recordAudit({
+      request,
+      actor: session.user,
+      action: AUDIT_ACTIONS_BY_ADMIN_ACTION[action],
+      subjectType: "user",
+      subjectIds: [target._id.toString()],
+      route: "admin/users/[id]:PATCH",
+      detail: {
+        statusBefore: before.status,
+        statusAfter: target.status,
+        roleBefore: before.role,
+        roleAfter: target.role,
+        verifiedBefore: before.isVerified,
+        verifiedAfter: target.isVerified,
+        usernameBefore: before.username,
+        usernameAfter: target.username,
+        // Whether the address changed, never the address itself. The username
+        // identifies the account well enough for an investigation, and copying
+        // an email into a second collection would duplicate personal data for
+        // no additional forensic value.
+        emailChanged: before.email !== target.email,
+      },
+    });
 
     return apiSuccess({
       id: target._id,
@@ -205,6 +252,27 @@ export async function DELETE(
     await Link.updateMany({ owner: target._id }, { $set: { owner: null } });
 
     await User.deleteOne({ _id: target._id });
+
+    // Written after the deletion has actually happened, so the trail never
+    // claims an account was removed when the Vercel detach above aborted the
+    // whole operation. The user id is kept even though the document is gone:
+    // it is the only stable handle left for the domains and links that
+    // referenced it.
+    await recordAudit({
+      request,
+      actor: session.user,
+      action: "admin.user.delete",
+      subjectType: "user",
+      subjectIds: [target._id.toString()],
+      route: "admin/users/[id]:DELETE",
+      detail: {
+        username: target.username,
+        role: target.role,
+        status: target.status,
+        domainsReleased: domains.length,
+        hostnames: domains.map((d) => d.hostname).join(", "),
+      },
+    });
 
     return apiSuccess({
       message: `User ${target.username} deleted`,
