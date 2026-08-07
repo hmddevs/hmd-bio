@@ -207,6 +207,7 @@ interface DeeplinkConfig {
   mode: DomainMode;
   appLinks: { aasa: string | null; assetlinks: string | null };
   fallbackTarget: string | null;
+  pathPrefix: string | null;
   updatedAt: string;
 }
 
@@ -236,6 +237,8 @@ function DeeplinkDialog({
   const [assetlinksTouched, setAssetlinksTouched] = useState(false);
   const [fallbackTarget, setFallbackTarget] = useState("");
   const [fallbackTouched, setFallbackTouched] = useState(false);
+  const [pathPrefix, setPathPrefix] = useState("");
+  const [pathPrefixTouched, setPathPrefixTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -263,16 +266,19 @@ function DeeplinkDialog({
             assetlinks: json.data.appLinks?.assetlinks ?? null,
           },
           fallbackTarget: json.data.fallbackTarget ?? null,
+          pathPrefix: json.data.pathPrefix ?? null,
           updatedAt: json.data.updatedAt,
         };
         setMode(config.mode);
         setAasa(config.appLinks.aasa ?? "");
         setAssetlinks(config.appLinks.assetlinks ?? "");
         setFallbackTarget(config.fallbackTarget ?? "");
+        setPathPrefix(config.pathPrefix ?? "");
         setModeTouched(false);
         setAasaTouched(false);
         setAssetlinksTouched(false);
         setFallbackTouched(false);
+        setPathPrefixTouched(false);
       } catch {
         if (!cancelled) setLoadError("Network error. Please try again.");
       } finally {
@@ -298,6 +304,11 @@ function DeeplinkDialog({
       if (fallbackTouched) {
         body.fallbackTarget = fallbackTarget.trim() === "" ? null : fallbackTarget.trim();
       }
+      // Blank clears the prefix, matching the partial-update contract: absent
+      // means unchanged, explicit null removes it.
+      if (pathPrefixTouched) {
+        body.pathPrefix = pathPrefix.trim() === "" ? null : pathPrefix.trim();
+      }
 
       const res = await fetch(`/api/v1/domains/${encodeURIComponent(hostname)}`, {
         method: "PATCH",
@@ -316,16 +327,19 @@ function DeeplinkDialog({
           assetlinks: json.data.appLinks?.assetlinks ?? null,
         },
         fallbackTarget: json.data.fallbackTarget ?? null,
+        pathPrefix: json.data.pathPrefix ?? null,
         updatedAt: json.data.updatedAt,
       };
       setMode(config.mode);
       setAasa(config.appLinks.aasa ?? "");
       setAssetlinks(config.appLinks.assetlinks ?? "");
       setFallbackTarget(config.fallbackTarget ?? "");
+      setPathPrefix(config.pathPrefix ?? "");
       setModeTouched(false);
       setAasaTouched(false);
       setAssetlinksTouched(false);
       setFallbackTouched(false);
+      setPathPrefixTouched(false);
       setSaved(true);
     } catch {
       setError("Network error. Please try again.");
@@ -372,6 +386,21 @@ function DeeplinkDialog({
             Deeplink
           </ToggleButton>
         </ToggleButtonGroup>
+
+        <TextField
+          id="deeplink-path-prefix"
+          label="Path prefix"
+          placeholder="l"
+          value={pathPrefix}
+          onChange={(e) => {
+            setPathPrefix(e.target.value);
+            setPathPrefixTouched(true);
+          }}
+          fullWidth
+          size="small"
+          sx={{ mb: 2 }}
+          helperText={`Optional. Serve your links under one extra segment, so https://${hostname}/l/abc123 resolves the link "abc123". Links at the root keep working either way. Leave blank to use the root only.`}
+        />
 
         {mode === "deeplink" && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>

@@ -1305,6 +1305,7 @@ export const openApiSpec = {
                     mode: "deeplink",
                     appLinks: { aasa: '{"applinks":{"details":[]}}', assetlinks: null },
                     fallbackTarget: "https://example.com/download",
+                    pathPrefix: null,
                     verifiedAt: "2026-07-01T09:00:00.000Z",
                     linkCount: 12,
                     failureReason: null,
@@ -1343,7 +1344,7 @@ export const openApiSpec = {
         tags: ["Domains"],
         summary: "Update a domain's deeplink configuration",
         description:
-          "Sets `mode`, the two association files, and the fallback target for a deeplink domain. " +
+          "Sets `mode`, the two association files, the fallback target, and the path prefix. " +
           "Every field is optional and an absent field is left unchanged, so a client only ever sends " +
           "what it means to change; sending an empty body is a no-op. Explicit `null` clears a value, " +
           "which is a different thing from omitting it. `appLinks` is itself partial: sending only " +
@@ -1384,6 +1385,7 @@ export const openApiSpec = {
                     mode: "deeplink",
                     appLinks: { aasa: '{"applinks":{"details":[]}}', assetlinks: null },
                     fallbackTarget: "https://example.com/download",
+                    pathPrefix: null,
                     updatedAt: "2026-07-02T10:00:00.000Z",
                   },
                 },
@@ -1395,7 +1397,8 @@ export const openApiSpec = {
               "Invalid hostname, malformed JSON body, a body larger than 768 KB, or the request " +
               "failed schema validation: an oversized association file, `aasa` not a JSON object " +
               "with at least one of `applinks`/`webcredentials`/`appclips`, `assetlinks` not a JSON " +
-              "array, or `fallbackTarget` not an absolute http(s) URL. The error message names the " +
+              "array, `fallbackTarget` not an absolute http(s) URL, or a `pathPrefix` that is not a " +
+              "single unreserved segment. The error message names the " +
               "first issue found, not every issue. Note that an accepted `fallbackTarget` is stored " +
               "in its normalised form, so the value returned may differ from the one sent.",
             content: {
@@ -2514,6 +2517,15 @@ export const openApiSpec = {
               "Where an unmatched path on a deeplink domain is sent, instead of the platform's default " +
               "not-found page. Absolute http(s) URL, no userinfo, 2048 characters max.",
           },
+          pathPrefix: {
+            type: "string",
+            nullable: true,
+            description:
+              "One extra path segment this domain's links are served under, stored without slashes " +
+              "(\"l\", never \"/l/\"). With it set, `https://go.example.com/l/abc123` resolves the " +
+              "keyword `abc123`. Additive: root-level links on the same domain keep resolving, so " +
+              "`https://go.example.com/abc123` still works. Null means root only.",
+          },
           verifiedAt: { type: "string", format: "date-time", nullable: true },
           linkCount: { type: "integer" },
           failureReason: { type: "string", nullable: true },
@@ -2570,6 +2582,18 @@ export const openApiSpec = {
             nullable: true,
             description: "Absolute http or https URL, no userinfo, 2048 characters max.",
           },
+          pathPrefix: {
+            type: "string",
+            nullable: true,
+            description:
+              "A single path segment of letters, digits, hyphens, or underscores, at most 32 " +
+              "characters. Leading and trailing slashes are trimmed, so \"/l/\" is accepted and " +
+              "stored as \"l\". Segments the platform owns are rejected: `admin`, `api`, " +
+              "`bookmarklet`, `dashboard`, `docs`, `login`, `signup`, `preview`, `password`, " +
+              "`not-found`, `stats`, `terms`, `privacy`, `cookies`, `aup`, `well-known`, and " +
+              "Next.js internals. Null removes the prefix and returns the domain to root-only " +
+              "resolution.",
+          },
         },
       },
       DeeplinkConfigResult: {
@@ -2589,6 +2613,7 @@ export const openApiSpec = {
             },
           },
           fallbackTarget: { type: "string", format: "uri", nullable: true },
+          pathPrefix: { type: "string", nullable: true },
           updatedAt: { type: "string", format: "date-time" },
         },
       },

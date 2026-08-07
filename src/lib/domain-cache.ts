@@ -30,6 +30,44 @@ function cacheKey(hostname: string): string {
 }
 
 /**
+ * Last-resort negative cache, in the process's own memory. Mirrors the one in
+ * domain-config-cache.ts, including its TTL and its cap, and exists for the
+ * same reason: with Redis down, this function issues a fresh `Domain.exists`
+ * per request, so an unauthenticated loop over unknown paths on a custom
+ * domain becomes a Mongo query amplifier during precisely the outage the
+ * server-rendered fallback exists to survive.
+ *
+ * Only "this hostname may not serve" is ever stored. A stale entry therefore
+ * costs a newly activated domain up to TTL_SECONDS before it starts resolving,
+ * which is exactly what the Redis TTL already allows, and suspension (the
+ * direction that matters) is never served from a stale positive because no
+ * positive is ever memoised.
+ */
+const negativeMemo = new Map<string, number>();
+
+function memoisedUnservable(host: string): boolean {
+  const expiresAt = negativeMemo.get(host);
+  if (expiresAt === undefined) return false;
+  if (expiresAt <= Date.now()) {
+    negativeMemo.delete(host);
+    return false;
+  }
+  return true;
+}
+
+function rememberUnservable(host: string, servable: boolean): void {
+  if (servable) {
+    negativeMemo.delete(host);
+    return;
+  }
+  // Unbounded growth is not a concern in practice (one entry per hostname per
+  // instance), but a hard cap keeps a hostile burst of unknown hosts from
+  // being a memory lever.
+  if (negativeMemo.size > 1000) negativeMemo.clear();
+  negativeMemo.set(host, Date.now() + TTL_SECONDS * 1000);
+}
+
+/**
  * True when the hostname may serve short links right now.
  *
  * The primary domain always may, and is answered without touching Redis or
@@ -57,8 +95,15 @@ export async function isDomainServable(hostname: string): Promise<boolean> {
     }
   }
 
+  // Reached only when Redis is unconfigured or did not answer. Serves the
+  // negative answer without a Mongo round trip, so an unknown or suspended
+  // host does not start paying per request the moment the cache goes away.
+  if (memoisedUnservable(host)) return false;
+
   const active = await Domain.exists({ hostname: host, status: "active" });
   const servable = active !== null;
+
+  rememberUnservable(host, servable);
 
   if (redis) {
     try {
@@ -87,6 +132,12 @@ export async function invalidateDomainStatus(hostname: string): Promise<void> {
   if (!host || host === PRIMARY_DOMAIN) return;
 
   await invalidateDomainConfig(host);
+
+  // Cleared first and unconditionally: the in-process fallback must not
+  // outlive an explicit invalidation just because Redis is unavailable. Only
+  // this instance's copy is dropped, which is why the entry is bounded by
+  // TTL_SECONDS rather than relying on invalidation alone.
+  negativeMemo.delete(host);
 
   const redis = getRedis();
   if (!redis) return;

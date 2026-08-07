@@ -13,12 +13,13 @@ Next.js 16 (App Router, Turbopack) · TypeScript 5 strict · MongoDB Atlas via M
 pnpm dev          # dev server (Turbopack)
 pnpm build        # production build + Sentry source map upload
 pnpm lint         # ESLint (eslint-config-next)
-npx tsc --noEmit  # typecheck (no test suite defined)
+pnpm test         # Vitest (run mode); CI gates on this
+npx tsc --noEmit  # typecheck
 ```
 
 ## Folder conventions
 - `src/app/(auth)/` and `src/app/(legal)/` are route groups (shared layouts, not URL segments).
-- `src/app/[keyword]/` — catch-all for short URL redirects; edge-resolved via `src/proxy.ts`.
+- `src/app/[...keyword]/` — catch-all for short URL redirects; edge-resolved via `src/proxy.ts`.
 - `src/app/api/internal/` — internal routes called by middleware only, authenticated via `INTERNAL_SECRET`.
 - `src/models/` — all Mongoose schemas; no Drizzle, no Prisma.
 - `scripts/` — one-off ops scripts, excluded from tsc compilation.

@@ -2,6 +2,7 @@ import { customAlphabet } from "nanoid";
 import { lookup as dnsLookup } from "dns/promises";
 import { isIP } from "net";
 import { timingSafeEqual } from "crypto";
+import { startsWithMatcherExcludedName } from "@/lib/reserved-paths";
 
 /**
  * Constant-time string comparison, for comparing shared secrets against a
@@ -18,7 +19,21 @@ const CHARSET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const generate = customAlphabet(CHARSET, 5);
 
 export function generateKeyword(length = 5): string {
-  return generate(length);
+  // Rejection sampling rather than a single draw. A random keyword can begin
+  // with one of the names the middleware matcher skips ("icon", "assets",
+  // "_next" and the rest), and such a link resolves only through the
+  // database fallback, unmetered and off the edge path. Roughly one in fifteen
+  // million at five characters, which is exactly the kind of odds that produces
+  // one silently odd link and no explanation. The loop is bounded because the
+  // reserved set is a vanishing fraction of the space; it cannot spin.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const candidate = generate(length);
+    if (!startsWithMatcherExcludedName(candidate)) return candidate;
+  }
+  // Eight consecutive reserved draws is not reachable in practice. Prefixing
+  // keeps the contract (always returns a usable keyword) rather than returning
+  // something the schemas would reject.
+  return `z${generate(length)}`;
 }
 
 export function numberToBase62(n: number): string {
