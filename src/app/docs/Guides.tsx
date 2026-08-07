@@ -2,10 +2,12 @@ import Link from "next/link";
 import ApiKeyField from "./ApiKeyField";
 import CopyButton from "./CopyButton";
 import {
+  agentPrompt,
   authSnippet,
   domainSnippets,
   domainSteps,
   gettingStartedSnippet,
+  machineSources,
   tiers,
 } from "./guide-content";
 
@@ -67,6 +69,49 @@ export default function Guides() {
           Public shortening is protected by Cloudflare Turnstile in production, so an unauthenticated
           call from a script needs a Turnstile token. Sending an API key instead skips Turnstile and
           attributes the link to your account.
+        </p>
+      </section>
+
+      <section id="build-with-ai" aria-labelledby="build-with-ai-heading" className="scroll-mt-20">
+        <SectionHeading id="build-with-ai">Build with AI</SectionHeading>
+        <p className="mt-3 max-w-[70ch] leading-relaxed text-gray-600 dark:text-gray-400">
+          This reference is also published in a form coding agents can read directly, so you should
+          not need to paste documentation by hand.
+        </p>
+
+        <ul className="mt-5 max-w-[70ch] space-y-2">
+          {machineSources.map((source) => (
+            <li key={source.href}>
+              <a
+                href={source.href}
+                className="group flex gap-3 rounded-xl border border-gray-200 p-3 transition-colors duration-150 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700"
+              >
+                <code
+                  className={`shrink-0 font-mono text-[13px] ${
+                    source.primary
+                      ? "text-blue-600 dark:text-blue-300"
+                      : "text-gray-700 dark:text-gray-300"
+                  }`}
+                >
+                  {source.label}
+                </code>
+                <span className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                  {source.desc}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+
+        <p className="mt-6 max-w-[70ch] leading-relaxed text-gray-600 dark:text-gray-400">
+          Give your assistant this and it has everything it needs:
+        </p>
+        <div className="mt-3 max-w-[70ch]">
+          <Snippet label="Prompt" code={agentPrompt} />
+        </div>
+        <p className="mt-3 max-w-[70ch] text-sm leading-relaxed text-gray-500 dark:text-gray-500">
+          Never paste a real API key into a chat with an assistant you do not control. Keys are
+          shown once at creation, are stored hashed, and can be revoked at any time.
         </p>
       </section>
 

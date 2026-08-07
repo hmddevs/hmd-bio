@@ -101,9 +101,65 @@ export const gettingStartedSnippet = `curl -X POST https://hmd.bio/api/v1/shorte
 export const authSnippet = `curl https://hmd.bio/api/v1/links \\
   -H "Authorization: Bearer hmd_yourkey"`;
 
+/**
+ * Machine-readable forms of this same reference, for anyone building with a
+ * coding agent. Ordered deliberately: llms-full.txt is the one to reach for.
+ */
+export interface MachineSource {
+  href: string;
+  label: string;
+  desc: string;
+  primary?: boolean;
+}
+
+export const machineSources: MachineSource[] = [
+  {
+    href: "/llms-full.txt",
+    label: "llms-full.txt",
+    desc: "Every endpoint, parameter, schema and response in one self-contained markdown file. Generated from the specification on each request, so it cannot drift. Point your agent at this one.",
+    primary: true,
+  },
+  {
+    href: "/llms.txt",
+    label: "llms.txt",
+    desc: "The short index, following the llms.txt convention. Use it when you want the map rather than the territory.",
+  },
+  {
+    href: "/api/docs",
+    label: "openapi.json",
+    desc: "The raw OpenAPI 3 specification, if your tooling reads a schema directly.",
+  },
+];
+
+/**
+ * A prompt the reader can hand to an assistant as-is. It front-loads the facts
+ * a model most often gets wrong from memory: the envelope shape, the rate
+ * limits, the Turnstile rule, and how a custom domain is targeted.
+ */
+export const agentPrompt = `I am integrating the HMD.bio URL shortener API.
+
+Read https://hmd.bio/llms-full.txt first. It is the complete API reference:
+every endpoint, its parameters, request and response schemas, and error
+shapes. Treat it as authoritative over anything you remember about this API.
+
+Key facts:
+- Base URL: https://hmd.bio/api/v1
+- Auth: send \`Authorization: Bearer hmd_<key>\`. Create a key in the
+  dashboard at https://hmd.bio/dashboard/settings.
+- Every response is shaped { success, statusCode, data?, error? }.
+- Rate limits: 30 requests/minute unauthenticated, 100 authenticated.
+  A 429 means back off, do not retry in a tight loop.
+- Shortening without a key needs a Cloudflare Turnstile token. Sending an
+  API key instead skips Turnstile and attributes the link to that account.
+- To create links on your own hostname, verify it first, then pass
+  "domain": "yourdomain.com" to POST /shorten.
+
+Now help me <describe what you are building>.`;
+
 /** Sections that appear above the endpoint reference, in nav order. */
 export const guideSections = [
   { id: "getting-started", label: "Getting started" },
+  { id: "build-with-ai", label: "Build with AI" },
   { id: "authentication", label: "Authentication" },
   { id: "rate-limits", label: "Rate limits" },
   { id: "custom-domains", label: "Custom domains" },
