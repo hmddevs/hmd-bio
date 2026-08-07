@@ -265,11 +265,16 @@ export async function addDomain(hostname: string): Promise<VercelResult<VercelDo
     return toFailure(raw, "addDomain");
   }
 
-  const body = raw.body as { uid?: string; name?: string; verified?: boolean } | null;
+  // The project-domains endpoint identifies a domain by its name, not by a uid
+  // (that field belongs to account-level domains), so `uid` is normally absent
+  // here. Fall back to the hostname, which is what removeDomain keys on anyway.
+  // The value doubles as the marker that we were the ones who attached this
+  // domain, so it must never come back null on a successful add.
+  const body = raw.body as { uid?: string; id?: string; name?: string; verified?: boolean } | null;
   return {
     ok: true,
     data: {
-      id: body?.uid ?? null,
+      id: body?.uid ?? body?.id ?? body?.name ?? hostname,
       name: body?.name ?? hostname,
       verified: body?.verified === true,
     },
@@ -299,10 +304,34 @@ export async function removeDomain(hostname: string): Promise<VercelResult<{ rem
   return failure;
 }
 
+/**
+ * Vercel returns recommended records in more than one shape depending on the
+ * record type and API version: a bare string, or a ranked entry whose `value`
+ * is itself a string or an array of strings. Both are normalised to a single
+ * string before they leave this module, because a caller that trusts one shape
+ * ends up putting an object where a hostname belongs.
+ */
+type RecommendedRecord = string | { rank?: number; value?: string | string[] };
+
 interface DomainConfigBody {
   misconfigured?: boolean;
-  recommendedCNAME?: string[];
-  recommendedIPv4?: Array<{ value?: string[] }>;
+  recommendedCNAME?: RecommendedRecord[];
+  recommendedIPv4?: RecommendedRecord[];
+}
+
+function firstRecordValue(records: RecommendedRecord[] | undefined): string | null {
+  const entry = records?.[0];
+  if (!entry) return null;
+
+  if (typeof entry === "string") return entry.trim() || null;
+
+  const value = entry.value;
+  if (typeof value === "string") return value.trim() || null;
+  if (Array.isArray(value)) {
+    const first = value.find((v) => typeof v === "string" && v.trim());
+    return first ? first.trim() : null;
+  }
+  return null;
 }
 
 /**
@@ -338,11 +367,11 @@ export async function getDomainStatus(
 
   const requiredRecords: Array<{ type: string; name: string; value: string }> = [];
   if (misconfigured) {
-    const cname = configBody?.recommendedCNAME?.[0];
+    const cname = firstRecordValue(configBody?.recommendedCNAME);
     if (cname) {
       requiredRecords.push({ type: "CNAME", name: hostname, value: cname });
     }
-    const ipv4 = configBody?.recommendedIPv4?.[0]?.value?.[0];
+    const ipv4 = firstRecordValue(configBody?.recommendedIPv4);
     if (ipv4) {
       requiredRecords.push({ type: "A", name: hostname, value: ipv4 });
     }
