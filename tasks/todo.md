@@ -1,169 +1,128 @@
-# Custom domains for short links
+# Custom domains — remaining work
 
-**Goal:** users attach their own domain (e.g. `go.acme.com`), verify ownership, and create
-short links on it through both the dashboard and the public API. Free, capped per user.
+The feature is live and working. Links resolve, domains verify, the dashboard shows both
+DNS records, Turnstile is enforced. What follows is what is genuinely NOT done.
 
-**Scale assumption:** ~5 domains initially, low tens at most. No provisioning queue, no
-provider abstraction, no billing. Vercel Pro has no domain cap and no per-domain charge.
+The completed build plan is in git history (PRs #10, #11, #12). This file now tracks only
+what is left.
 
-**Provider:** Vercel Domains REST API (`/v10/projects/{id}/domains`, `/v9/.../verify`).
-TLS is issued and renewed by Vercel automatically.
-
----
-
-## Design decisions (settled)
-
-1. **`domain` is a denormalised lowercase hostname string on `Link`**, not an ObjectId ref.
-   The redirect path is the hottest query in the system; a string field means resolution
-   stays a single indexed `findOne({ domain, keyword })` with no join.
-2. **`PRIMARY_DOMAIN` (`hmd.bio`) is a real value, not a null sentinel.** Every existing
-   link is backfilled to it. Null-as-default would make the unique index semantics
-   ambiguous and every query site need a fallback branch.
-3. **Uniqueness becomes compound `(domain, keyword)`.** Two users may both own `/launch`
-   on their own domains. The old global unique index on `keyword` is dropped.
-4. **Ownership is verified by DNS TXT before the domain is ever provisioned.** A domain a
-   user merely typed is never sent to Vercel.
-5. **Custom domains serve short links only.** Dashboard, admin, auth and legal routes are
-   redirected to the primary domain. A custom host must never render the app shell.
-6. **Reserved keywords apply only on the primary domain.** `go.acme.com/admin` is the
-   user's business; `hmd.bio/admin` is ours.
+Ordered by whether it misleads a user, then by risk.
 
 ---
 
-## Phase 1 — Data layer and migration (highest risk, lands alone)
+## P1 — The API reference does not know custom domains exist
 
-- [x] 1.1 Add `src/lib/domains.ts`: `PRIMARY_DOMAIN` constant (from
-      `NEXT_PUBLIC_PRIMARY_DOMAIN`, default `hmd.bio`), `normaliseHost()` (lowercase,
-      strip port, strip trailing dot, strip `www.`), `isPrimaryHost()`.
-- [x] 1.2 New model `src/models/Domain.ts`:
-      `hostname` (unique, lowercase), `owner` (ObjectId, required, indexed),
-      `status` (`pending_dns` | `verifying` | `provisioning` | `active` | `failed` |
-      `suspended`), `verificationToken`, `verifiedAt`, `lastCheckedAt`, `failureReason`,
-      `vercelDomainId`, `linkCount`, timestamps.
-      Index `{ owner: 1, status: 1 }`.
-- [x] 1.3 `Link.ts`: add `domain: { type: String, required: true, lowercase: true, trim: true,
-      default: PRIMARY_DOMAIN }`. Remove `unique: true` from `keyword`. Add
-      `LinkSchema.index({ domain: 1, keyword: 1 }, { unique: true })`.
-- [x] 1.4 `Click.ts`: add `domain` (String, default `PRIMARY_DOMAIN`, indexed). Update the
-      existing compound index(es) that start with `keyword` to lead with `domain`.
-- [x] 1.5 Migration script `scripts/migrate-add-domain.ts`, idempotent, ordered:
-      1. `updateMany({ domain: { $exists: false } }, { $set: { domain: PRIMARY_DOMAIN } })`
-         on `links` and `clicks`.
-      2. Verify zero docs remain without `domain` — abort loudly if any.
-      3. Create `{ domain: 1, keyword: 1 }` unique index.
-      4. Only then drop the old `keyword_1` unique index.
-      Dry-run flag; prints counts before and after. Never destructive on failure.
-- [x] 1.6 Confirm `autoIndex` in `src/lib/db.ts`. If enabled in production, disable it and
-      make index creation explicit, so a deploy can never race the migration.
+**The miss:** `src/lib/openapi.ts` is the spec served at `/api/docs` and `/api/admin/docs`.
+It contains zero mention of `/api/v1/domains`. The domains documentation written during
+the build went into `src/lib/openapi-public.ts`, which is imported by nothing and reaches
+no user. Neither spec mentions `pointingRecord`.
 
-**Gate:** migration runs clean against a copy of production before Phase 2 starts.
+Consequence: a developer reading the formal API reference cannot discover the domains
+endpoints at all, and cannot see the `domain` field on the endpoints they can find.
 
-## Phase 2 — Domain ownership: verification and provisioning
+- [ ] 1.1 Decide the fate of the two spec files, then act on it. Options:
+      (a) fold the domains content from `openapi-public.ts` into `openapi.ts` and delete
+          `openapi-public.ts`;
+      (b) wire `openapi-public.ts` to `/api/docs` and keep `openapi.ts` for
+          `/api/admin/docs` only, if the split was deliberate.
+      Check git history and `src/app/api/admin/docs/route.ts` before choosing. (a) is
+      likely right unless the split was intentional. RESOLVE THIS FIRST, everything below
+      depends on which file is canonical.
+- [ ] 1.2 In the canonical spec, document all five domains endpoints: GET and POST
+      `/api/v1/domains`, GET and DELETE `/api/v1/domains/{hostname}`, POST
+      `/api/v1/domains/{hostname}/verify`. Include every status the routes actually
+      return, verified against the source rather than assumed:
+      - GET /domains: 200, 401, 429
+      - POST /domains: 201, 400, 401, 403, 409, 429
+      - GET /domains/{hostname}: 200, 400, 401, 404, 429
+      - DELETE /domains/{hostname}: 200, 400, 401, 404, 409, 502, 503
+      - POST /domains/{hostname}/verify: 200, 202, 400, 401, 403, 404, 409, 429, 503
+- [ ] 1.3 Add `pointingRecord` to the `Domain` schema and to every response that returns
+      it. Document that it is null once a domain is active.
+- [ ] 1.4 Confirm the spec covers the rest of today's changes: `domain` on POST
+      `/api/v1/shorten` and in link responses, `?domain=` on `/api/v1/links` and
+      `/api/v1/links/{keyword}`, `shortUrl` in link responses, and the `domain` column now
+      leading the `/api/v1/links/export` CSV (a breaking change for positional parsers,
+      call it out explicitly).
+- [ ] 1.5 Document the asymmetry that will trip people up: omitting `?domain=` on the
+      links LIST returns links across all the caller's domains, but omitting it on a
+      single link defaults to the primary domain only.
 
-- [x] 2.1 `src/lib/vercel-domains.ts`: `addDomain()`, `removeDomain()`, `getDomainStatus()`
-      against the Vercel REST API using `VERCEL_API_TOKEN` + `VERCEL_PROJECT_ID`
-      (+ `VERCEL_TEAM_ID`). Typed errors, no secret ever logged.
-- [x] 2.2 `src/lib/dns-verify.ts`: resolve `_hmd-verify.<hostname>` TXT via `node:dns/promises`
-      and compare against the stored token in constant time.
-- [x] 2.3 Hostname validation in `validations.ts` (`domainSchema`): valid public hostname,
-      lowercase, no scheme/path/port, max 253 chars, at least one dot, not `hmd.bio` or any
-      subdomain of it, not an IP, not a public suffix on its own.
-- [x] 2.4 Blocklist of high-value hostnames that must never be attachable
-      (bank/payment/major-brand shortlist) in `src/lib/domains.ts`.
-- [x] 2.5 State machine transitions live in one module, `src/lib/domain-state.ts`. No route
-      mutates `status` directly.
+## P2 — Inconsistent API responses
 
-## Phase 3 — Domain API (`/api/v1/domains`)
+- [ ] 2.1 `POST /api/v1/domains/{hostname}/verify` returns `pointingRecord` on 200 but not
+      on 202, which is the one response where the user most needs it. Add it.
+- [ ] 2.2 `/api/v1/shorten` never passes `request` to `apiSuccess`/`apiError`, so
+      `?format=json|xml|jsonp|text` is silently ignored on the single most-used endpoint
+      in the API. Fix every call site in the file. Check the other `/api/v1` routes for the
+      same omission while in there, and note that admin domain routes were previously
+      flagged for this too.
 
-- [x] 3.1 `GET /api/v1/domains` — list caller's domains with status and DNS instructions.
-- [x] 3.2 `POST /api/v1/domains` — claim a hostname. Generates the verification token,
-      writes `pending_dns`, returns the TXT record to create. Enforces the per-user cap
-      (`MAX_DOMAINS_PER_USER`, default 3). Does **not** call Vercel.
-- [x] 3.3 `POST /api/v1/domains/[hostname]/verify` — checks the TXT record; on success adds
-      the domain to Vercel and moves to `provisioning`, then `active` once Vercel reports
-      the cert is issued. Rate-limited (6/hour/user) so it can't be used as a DNS scanner.
-- [x] 3.4 `DELETE /api/v1/domains/[hostname]` — removes from Vercel, then soft-deletes.
-      Refuses while links exist unless `?force=true`, which reassigns nothing and instead
-      returns the count so the user must decide explicitly.
-- [x] 3.5 All four use `requireAuth`, `apiSuccess`/`apiError`, and honour `?format=`.
-      Ownership is re-checked on every route; never trust the hostname in the path alone.
+## P3 — No tests at all
 
-## Phase 4 — Link creation and resolution on custom domains
+There is no test runner in this project. Three pure functions shipped today are cheap to
+test and expensive to get wrong, and one of them silently produces invalid DNS advice if
+it regresses.
 
-- [x] 4.1 `shortenSchema`, `editLinkSchema`, `bulkImportSchema`: optional `domain` field,
-      defaulting to `PRIMARY_DOMAIN`.
-- [x] 4.2 `POST /api/v1/shorten`: if `domain` is not primary, assert the caller owns it and
-      it is `active`. Anonymous callers may only use the primary domain. Reserved-keyword
-      check applies to the primary domain only.
-- [x] 4.3 `shortUrl` in every response is built from the link's own domain, not a hardcoded
-      base URL. Audit every construction site.
-- [x] 4.4 `GET /api/v1/links` and `/links/[keyword]`: `domain` query param to disambiguate;
-      responses include `domain`. Without the param, default to primary for
-      backwards-compatibility.
-- [x] 4.5 `proxy.ts`: read and normalise `Host`, pass it to `/api/internal/resolve`.
-      On a non-primary host, redirect app routes (`/dashboard`, `/admin`, `/login`,
-      `/signup`, legal pages) to the same path on the primary domain rather than rendering.
-- [x] 4.6 `/api/internal/resolve`: accept `domain`, query `{ domain, keyword }`, and scope
-      the click `$inc` to the same pair. Reject a domain that is not `active`.
-- [x] 4.7 `src/app/[keyword]/page.tsx` fallback: same host-aware lookup, so the
-      middleware-down path stays correct.
-- [x] 4.8 Password flow (`/password/[keyword]`, `/api/internal/verify-password`) and stats
-      preview (`/stats/[keyword]`, `keyword+`) made domain-aware.
-- [x] 4.9 Redis: cache key becomes `resolve:{domain}:{keyword}`. Add a short-TTL
-      `domain-status:{hostname}` cache so resolution does not hit Mongo for the domain
-      record on every request. Degrade to Mongo if Redis is down.
+- [ ] 3.1 Add a minimal runner (Vitest, no config beyond the defaults) and a `test`
+      script. This is a new top-level dependency, so it needs Umut's explicit approval
+      before installing.
+- [ ] 3.2 Cover `isApexDomain` and `vercelPointingRecord`: apex with a simple TLD
+      (`hmd.bio`), apex under a multi-label public suffix (`guden.com.tr`, `acme.co.uk`),
+      subdomain (`go.acme.com`), deep subdomain under a public suffix
+      (`a.b.acme.co.uk`). A CNAME must never be produced for an apex.
+- [ ] 3.3 Cover `normaliseHost` (port, trailing dot, uppercase, `www.`, scheme, junk) and
+      `hostnameSchema` (public suffix rejection, IP literals, the primary domain and its
+      subdomains, blocklisted hostnames).
 
-## Phase 5 — Dashboard UI (MUI v7, per DESIGN.md)
+## P4 — Housekeeping and decisions
 
-- [x] 5.1 `/dashboard/domains` — list, add, verify, delete. Mirrors the API-keys pattern in
-      `src/app/dashboard/settings/page.tsx`.
-- [x] 5.2 Add-domain flow: enter hostname, receive the TXT record with a copy button and
-      clear per-registrar wording, then a "Check now" button that polls verify.
-- [x] 5.3 Status chips: pending, verifying, active, failed, suspended, with the failure
-      reason surfaced verbatim when present.
-- [x] 5.4 Domain selector on `/dashboard/links/new`, defaulting to `hmd.bio`, listing only
-      the user's `active` domains. The edit form shows the link's domain as read-only text
-      instead: `editLinkSchema.domain` is a lookup selector, not a move (moving a link
-      between domains is explicitly out of scope per its schema comment), so a `Select`
-      there would imply a choice that does not exist.
-- [x] 5.5 Links table and detail pages show the full short URL including its domain, via the
-      API's own `shortUrl`/`domain` fields rather than `window.location.origin`.
-- [x] 5.6 Nav entry in `UserShell.tsx`.
+- [ ] 4.1 Delete `src/components/admin/AdminNav.tsx`. It is untracked and imported by
+      nothing; `AdminShell.tsx` is the nav that renders. It has already caused one wasted
+      change this session.
+- [ ] 4.2 Decide on three untracked files, on a PUBLIC repo: `DESIGN.md` (probably should
+      be committed, contributors need it), `PRODUCT.md` and
+      `tasks/fable-security-audit-prompt.md` (probably internal). Umut's call, not mine.
+- [ ] 4.3 Commit this file.
 
-## Phase 6 — Admin and abuse controls
+## P5 — Deferred from the build, still outstanding
 
-- [x] 6.1 `/admin/(dashboard)/domains` — all domains, owner, status, link count, search.
-      Follows the users-page pattern.
-- [x] 6.2 Suspend/unsuspend. A suspended domain stops resolving immediately (cache
-      invalidated) but retains its data.
-- [x] 6.3 Re-verification cron (`/api/internal/domains/recheck`): re-resolves TXT records
-      on a rolling basis and flags domains whose DNS has gone away. Batched.
-
-## Phase 7 — Docs and verification
-
-- [x] 7.1 OpenAPI spec (`src/lib/openapi-public.ts`) updated with the domains endpoints and
-      the new `domain` field.
-- [x] 7.2 `/docs` updated: how to attach a domain, DNS records, API examples.
-- [x] 7.3 `npx tsc --noEmit` and `pnpm lint` clean.
-- [x] 7.4 `security` agent review of the whole diff before any push (ownership checks,
-      SSRF on hostname resolution, tenant isolation on every link query).
-- [ ] 7.5 `vercel build` locally, both preview and production pipelines, per deploy gate.
+- [ ] 5.1 Preview environment is missing `INTERNAL_SECRET`, `IP_HASH_SALT`,
+      `IP_ENCRYPTION_KEY` (set only for one old branch) and both Turnstile keys
+      (Production only). Previews build and serve but run degraded: no click logging, no
+      internal resolution, signup returns 503. Dashboard job, the CLI cannot set
+      "all preview branches" non-interactively.
+- [ ] 5.2 A hostname's new owner cannot reuse a keyword the previous owner used, because
+      the unique index still counts detached links. Fails closed with a 409, so it is a
+      papercut rather than a leak. Fixing it properly needs a partial unique index on
+      `domainDetachedAt: null` and therefore another migration.
+- [ ] 5.3 Admin user deletion releases a user's `Domain` records but never calls Vercel's
+      `removeDomain`, so their domains stay attached to the Vercel project.
+- [ ] 5.4 Two pending accounts have generated-looking usernames but verified emails:
+      `rylan.rogers@sd68.bc.ca`, `lalasi@revenew.net`. They cleared email verification, so
+      the purge script deliberately spared them. Umut's call whether to remove them.
 
 ---
 
-## Risks
+## Verified working, for the record
 
-| Risk | Mitigation |
-|---|---|
-| Index migration breaks live redirects | Backfill before index swap; create new index before dropping old; idempotent script; run against a prod copy first |
-| A link query missing its `domain` filter leaks across tenants | Every `Link.findOne`/`updateOne` audited in Phase 4; security review in 7.4 |
-| Custom host renders the dashboard | Explicit host guard in `proxy.ts` (4.5) |
-| Analytics merge across domains | `domain` added to `Click` in 1.4 |
-| Domain hijack via unverified claim | TXT verification before provisioning (2.2), blocklist (2.4) |
-| Vercel API token leak | Server-only module, never logged, no client exposure |
+Do not redo these:
+- 298 links and 88,490 clicks migrated; compound `(domain, keyword)` index live; existing
+  links still resolve (`hmd.bio/sptfy` returns 302).
+- Turnstile enforced on signup and shorten; the site key is in the client bundle and the
+  widget renders; unauthenticated signup returns 403.
+- 106 bot accounts purged, 13 users remain, all verified.
+- Dashboard and API are at parity for list, add, verify and delete.
+- All `/api/v1/domains` routes pass `request` for format negotiation.
+- The cron path, schedule and GET-plus-Bearer auth match what Vercel Cron sends.
+- The hand-written `/docs` page is accurate, including both DNS records and the proxy
+  warning.
 
-## Out of scope
+## Working method for the next session
 
-Per-domain billing, provider abstraction, provisioning queue, destination-URL safe-browsing
-screening, domain transfer between users, wildcard/apex-only edge cases beyond what Vercel
-handles natively.
+P1 first and alone, since it is the only item a user can currently be misled by, and 1.1
+gates the rest of it. P2 is small and can ride in the same PR. P3 needs approval before
+installing anything. P4 and P5 are decisions more than work.
+
+Deploy gate applies as always: `vercel pull` then `vercel build` for the target
+environment, and watch the deployment to Ready.
