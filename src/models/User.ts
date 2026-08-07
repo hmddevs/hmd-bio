@@ -56,5 +56,13 @@ const UserSchema = new Schema<IUser>(
   }
 );
 
+// API-key authentication looks a user up by key hash on every Bearer request,
+// and `/api/v1/shorten` now performs that lookup before Turnstile runs, so an
+// anonymous caller can reach it. Without this index that is a collection scan
+// an unauthenticated request can trigger. `autoIndex` is off (src/lib/db.ts),
+// so declaring it here is not enough: scripts/migrate-api-key-index.ts creates
+// it on the live database.
+UserSchema.index({ "apiKeys.keyHash": 1 });
+
 export const User: Model<IUser> =
   mongoose.models.User || mongoose.model<IUser>("User", UserSchema);
