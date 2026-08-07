@@ -7,6 +7,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth, requireOwnership } from "@/lib/api-auth";
 import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
+import { recordAudit, isAdministrativeAccess } from "@/lib/audit";
 import { isReservedKeyword } from "@/lib/utils";
 import { domainFromQuery } from "@/lib/domain-access";
 import { PRIMARY_DOMAIN, buildShortUrl } from "@/lib/domains";
@@ -86,6 +87,12 @@ export async function PUT(
     const forbidden = requireOwnership(existing, session, { notFoundMessage: "Link not found" });
     if (forbidden) return forbidden;
 
+    // Captured before the update, so the audit entry below can show what the
+    // link pointed at before an administrator repointed it.
+    const ownerId = existing.owner ? existing.owner.toString() : null;
+    const urlBefore = existing.url;
+    const statusCodeBefore = existing.statusCode;
+
     const updates: Record<string, unknown> = {};
 
     if (parsed.data.url) updates.url = parsed.data.url;
@@ -151,6 +158,42 @@ export async function PUT(
       return apiError("Link not found", 404);
     }
 
+    // Same reasoning as the DELETE path below, and the same gate. An
+    // administrator repointing somebody else's link is the quieter of the two
+    // administrative actions available here: the link keeps resolving, so
+    // nobody holding the URL sees that its destination changed. The previous
+    // and new destinations are recorded so the change is reviewable. A user
+    // editing their own link is ordinary self-service and is not recorded.
+    //
+    // Nothing here is IP-derived or personal: a destination URL, a keyword and
+    // an owner id. If a destination is a bare IP literal the builder redacts
+    // it, which over-redacts a legitimate value rather than risk the reverse.
+    if (isAdministrativeAccess(session.user, ownerId)) {
+      // The outcome is deliberately ignored: the change above has already
+      // committed, so failing the request here would report failure for work that
+      // actually happened. `admin/clicks:GET` is the sole route that fails closed
+      // instead, because nothing has been disclosed at its call site yet.
+      await recordAudit({
+        request,
+        actor: session.user,
+        action: "admin.link.edit",
+        subjectType: "link",
+        subjectIds: [`${domain} ${keyword}`],
+        route: "links/[keyword]:PUT",
+        detail: {
+          domain,
+          keyword,
+          keywordAfter: updated.keyword,
+          owner: ownerId,
+          urlBefore,
+          urlAfter: updated.url,
+          statusCodeBefore,
+          statusCodeAfter: updated.statusCode,
+          passwordChanged: Boolean(parsed.data.password) || Boolean(parsed.data.removePassword),
+        },
+      });
+    }
+
     return apiSuccess({ ...updated, shortUrl: buildShortUrl(updated.domain, updated.keyword) });
   } catch (err) {
     captureError(err, { route: "links/[keyword]", method: "PUT" });
@@ -185,10 +228,39 @@ export async function DELETE(
   const forbidden = requireOwnership(existing, session, { notFoundMessage: "Link not found" });
   if (forbidden) return forbidden;
 
+  const ownerId = existing.owner ? existing.owner.toString() : null;
+
   await Link.deleteOne({ domain, keyword });
 
   // Also remove click logs, scoped to the same domain.
-  await Click.deleteMany({ domain, keyword });
+  const removedClicks = await Click.deleteMany({ domain, keyword });
+
+  // Not an /admin route, but `requireOwnership` lets an administrator through
+  // on somebody else's link, so this is the one destructive administrative
+  // action that does not live under /api/v1/admin. Deleting the link destroys
+  // its clicks too, which is the very data the audit trail exists to account
+  // for. A user deleting their own link is ordinary self-service and is not
+  // recorded.
+  if (isAdministrativeAccess(session.user, ownerId)) {
+    // The outcome is deliberately ignored: the change above has already
+    // committed, so failing the request here would report failure for work that
+    // actually happened. `admin/clicks:GET` is the sole route that fails closed
+    // instead, because nothing has been disclosed at its call site yet.
+    await recordAudit({
+      request,
+      actor: session.user,
+      action: "admin.link.delete",
+      subjectType: "link",
+      subjectIds: [`${domain} ${keyword}`],
+      route: "links/[keyword]:DELETE",
+      detail: {
+        domain,
+        keyword,
+        owner: ownerId,
+        clicksDeleted: removedClicks.deletedCount ?? 0,
+      },
+    });
+  }
 
   return apiSuccess({ deleted: keyword, domain });
 }

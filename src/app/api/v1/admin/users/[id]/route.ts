@@ -12,6 +12,7 @@ import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { sendApprovalEmail } from "@/lib/email";
 import { adminEditProfileSchema } from "@/lib/validations";
+import { recordAudit, type AuditAction } from "@/lib/audit";
 import mongoose from "mongoose";
 
 // Deleting a user detaches each of their domains from Vercel one at a time,
@@ -22,15 +23,34 @@ import mongoose from "mongoose";
 // way and a retry is idempotent, so this buys diagnosability, not correctness.
 export const maxDuration = 60;
 
-const VALID_ACTIONS = new Set([
-  "approve",
-  "disable",
-  "enable",
-  "verify",
-  "promote",
-  "demote",
-  "editProfile",
-]);
+// Every administrative change to somebody else's account is recorded, not only
+// deletion. Disabling hides an account from its owner and promoting hands out
+// administrative access, which is exactly what an investigation into a
+// compromised admin account needs to be able to see.
+//
+// This map is the single list of administrative actions: the accepted set and
+// the error message are both derived from it below. Two hand-maintained lists
+// would agree until somebody added an action to one of them, and the failure
+// mode of that drift is a privilege change happening with no audit entry, which
+// is silent by definition.
+const AUDIT_ACTIONS_BY_ADMIN_ACTION = {
+  approve: "admin.user.approve",
+  disable: "admin.user.disable",
+  enable: "admin.user.enable",
+  verify: "admin.user.verify",
+  promote: "admin.user.promote",
+  demote: "admin.user.demote",
+  editProfile: "admin.user.edit_profile",
+} as const satisfies Record<string, AuditAction>;
+
+type AdminUserAction = keyof typeof AUDIT_ACTIONS_BY_ADMIN_ACTION;
+
+const VALID_ACTIONS = new Set<string>(Object.keys(AUDIT_ACTIONS_BY_ADMIN_ACTION));
+const VALID_ACTIONS_MESSAGE = `Invalid action. Use: ${Object.keys(AUDIT_ACTIONS_BY_ADMIN_ACTION).join(", ")}`;
+
+function isAdminUserAction(value: unknown): value is AdminUserAction {
+  return typeof value === "string" && VALID_ACTIONS.has(value);
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -53,9 +73,9 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { action } = body as { action: string };
-    if (typeof action !== "string" || !VALID_ACTIONS.has(action)) {
-      return apiError("Invalid action. Use: approve, disable, enable, verify, promote, demote, editProfile", 400);
+    const { action } = body as { action: unknown };
+    if (!isAdminUserAction(action)) {
+      return apiError(VALID_ACTIONS_MESSAGE, 400);
     }
 
     await connectDB();
@@ -67,6 +87,14 @@ export async function PATCH(
     if (target._id.toString() === session.user.id) {
       return apiError("Cannot modify your own account this way", 400);
     }
+
+    const before = {
+      status: target.status,
+      role: target.role,
+      isVerified: target.isVerified,
+      username: target.username,
+      email: target.email,
+    };
 
     switch (action) {
       case "approve":
@@ -112,10 +140,38 @@ export async function PATCH(
         break;
       }
       default:
-        return apiError("Invalid action. Use: approve, disable, enable, verify, promote, demote, editProfile", 400);
+        return apiError(VALID_ACTIONS_MESSAGE, 400);
     }
 
     await target.save();
+
+    // The outcome is deliberately ignored: the change above has already
+    // committed, so failing the request here would report failure for work that
+    // actually happened. `admin/clicks:GET` is the sole route that fails closed
+    // instead, because nothing has been disclosed at its call site yet.
+    await recordAudit({
+      request,
+      actor: session.user,
+      action: AUDIT_ACTIONS_BY_ADMIN_ACTION[action],
+      subjectType: "user",
+      subjectIds: [target._id.toString()],
+      route: "admin/users/[id]:PATCH",
+      detail: {
+        statusBefore: before.status,
+        statusAfter: target.status,
+        roleBefore: before.role,
+        roleAfter: target.role,
+        verifiedBefore: before.isVerified,
+        verifiedAfter: target.isVerified,
+        usernameBefore: before.username,
+        usernameAfter: target.username,
+        // Whether the address changed, never the address itself. The username
+        // identifies the account well enough for an investigation, and copying
+        // an email into a second collection would duplicate personal data for
+        // no additional forensic value.
+        emailChanged: before.email !== target.email,
+      },
+    });
 
     return apiSuccess({
       id: target._id,
@@ -205,6 +261,31 @@ export async function DELETE(
     await Link.updateMany({ owner: target._id }, { $set: { owner: null } });
 
     await User.deleteOne({ _id: target._id });
+
+    // Written after the deletion has actually happened, so the trail never
+    // claims an account was removed when the Vercel detach above aborted the
+    // whole operation. The user id is kept even though the document is gone:
+    // it is the only stable handle left for the domains and links that
+    // referenced it.
+    // The outcome is deliberately ignored: the change above has already
+    // committed, so failing the request here would report failure for work that
+    // actually happened. `admin/clicks:GET` is the sole route that fails closed
+    // instead, because nothing has been disclosed at its call site yet.
+    await recordAudit({
+      request,
+      actor: session.user,
+      action: "admin.user.delete",
+      subjectType: "user",
+      subjectIds: [target._id.toString()],
+      route: "admin/users/[id]:DELETE",
+      detail: {
+        username: target.username,
+        role: target.role,
+        status: target.status,
+        domainsReleased: domains.length,
+        hostnames: domains.map((d) => d.hostname).join(", "),
+      },
+    });
 
     return apiSuccess({
       message: `User ${target.username} deleted`,

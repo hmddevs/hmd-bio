@@ -8,6 +8,7 @@ import { captureError } from "@/lib/errors";
 import { normaliseHost } from "@/lib/domains";
 import { transition, IllegalDomainTransitionError } from "@/lib/domain-state";
 import { invalidateDomainStatus } from "@/lib/domain-cache";
+import { recordAudit } from "@/lib/audit";
 
 type SuspendAction = "suspend" | "unsuspend";
 const VALID_ACTIONS: SuspendAction[] = ["suspend", "unsuspend"];
@@ -50,6 +51,8 @@ export async function PATCH(
     const domain = await Domain.findOne({ hostname });
     if (!domain) return apiError("Domain not found", 404);
 
+    const statusBefore = domain.status;
+
     try {
       // Only touch suspendedReason/suspendedAt when the status is actually
       // changing. Re-entering the same status is a no-op success in
@@ -80,6 +83,29 @@ export async function PATCH(
     }
 
     await invalidateDomainStatus(hostname);
+
+    // Suspending takes a customer's live domain out of service, so it is
+    // recorded whether or not it changed anything: a repeat call is a no-op for
+    // the domain but still an administrator reaching for the switch.
+    // The outcome is deliberately ignored: the change above has already
+    // committed, so failing the request here would report failure for work that
+    // actually happened. `admin/clicks:GET` is the sole route that fails closed
+    // instead, because nothing has been disclosed at its call site yet.
+    await recordAudit({
+      request,
+      actor: session.user,
+      action: action === "suspend" ? "admin.domain.suspend" : "admin.domain.unsuspend",
+      subjectType: "domain",
+      subjectIds: [domain.hostname],
+      route: "admin/domains/[hostname]:PATCH",
+      detail: {
+        statusBefore,
+        statusAfter: domain.status,
+        // The reason the administrator gave, not derived from any visitor data.
+        reason,
+        owner: domain.owner ? domain.owner.toString() : null,
+      },
+    });
 
     return apiSuccess({
       hostname: domain.hostname,
