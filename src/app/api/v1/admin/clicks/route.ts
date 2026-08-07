@@ -7,6 +7,7 @@ import { requireAuth } from "@/lib/api-auth";
 import { rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { decryptIP } from "@/lib/ip";
+import { recordAudit } from "@/lib/audit";
 
 /**
  * Composite map key for a (domain, keyword) pair.
@@ -79,22 +80,55 @@ export async function GET(request: NextRequest) {
       links.map((l) => [linkKey(l.domain, l.keyword), { title: l.title, url: l.url }])
     );
 
+    const rows = clicks.map((c) => ({
+      id: c._id.toString(),
+      keyword: c.keyword,
+      domain: c.domain,
+      linkTitle: linkMap.get(linkKey(c.domain, c.keyword))?.title || "",
+      linkUrl: linkMap.get(linkKey(c.domain, c.keyword))?.url || "",
+      createdAt: c.createdAt.toISOString(),
+      // Admin-only decrypt of the AES-256-GCM ciphertext; never expose ipRaw/ipIv directly.
+      ip: c.ipRaw && c.ipIv ? decryptIP(c.ipIv, c.ipRaw) : "",
+      countryCode: c.countryCode || "",
+      browser: c.browser || "",
+      os: c.os || "",
+      referrer: c.referrer || "",
+      userAgent: c.userAgent || "",
+    }));
+
+    // Every response from this route hands an administrator visitors' plaintext
+    // addresses, so every response leaves a record. Only the rows that actually
+    // yielded an address are logged: a page of clicks with no ciphertext, or
+    // ciphertext that failed to decrypt, exposed nothing. The clicks are
+    // referenced by id, never by the value that was revealed, so the trail is
+    // correlatable without the audit collection becoming a second place the
+    // addresses live.
+    const exposed = rows.filter((r) => r.ip !== "");
+    if (exposed.length > 0) {
+      await recordAudit({
+        request,
+        actor: session.user,
+        action: "admin.click_ip.decrypt",
+        subjectType: "click",
+        subjectIds: exposed.map((r) => r.id),
+        subjectCount: exposed.length,
+        route: "admin/clicks:GET",
+        // The filter that selected them, so a reviewer can see the shape of the
+        // search rather than only its results.
+        detail: {
+          page,
+          limit,
+          filterKeyword: keyword,
+          filterCountry: country,
+          filterBrowser: browser,
+          filterOs: os,
+          matchingTotal: total,
+        },
+      });
+    }
+
     return apiSuccess({
-      clicks: clicks.map((c) => ({
-        id: c._id.toString(),
-        keyword: c.keyword,
-        domain: c.domain,
-        linkTitle: linkMap.get(linkKey(c.domain, c.keyword))?.title || "",
-        linkUrl: linkMap.get(linkKey(c.domain, c.keyword))?.url || "",
-        createdAt: c.createdAt.toISOString(),
-        // Admin-only decrypt of the AES-256-GCM ciphertext; never expose ipRaw/ipIv directly.
-        ip: c.ipRaw && c.ipIv ? decryptIP(c.ipIv, c.ipRaw) : "",
-        countryCode: c.countryCode || "",
-        browser: c.browser || "",
-        os: c.os || "",
-        referrer: c.referrer || "",
-        userAgent: c.userAgent || "",
-      })),
+      clicks: rows,
       total,
       page,
       pages: Math.ceil(total / limit),
