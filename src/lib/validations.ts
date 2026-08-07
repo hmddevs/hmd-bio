@@ -7,7 +7,10 @@ import {
 } from "@/lib/domains";
 // Imported rather than restated: the API cap and the schema's `maxlength` must
 // never drift, or a body that validates here fails at the database instead.
-import { APP_LINKS_MAXLENGTH } from "@/models/Domain";
+import { APP_LINKS_MAXLENGTH, PATH_PREFIX_MAXLENGTH } from "@/models/Domain";
+// Derived, never restated: the proxy owns these paths, and a path prefix that
+// shadowed one would take the app shell away from a tenant's own visitors.
+import { isReservedPathPrefix, startsWithMatcherExcludedName } from "@/lib/reserved-paths";
 
 // --- Hostname primitives -------------------------------------------------
 // Defined first because the link schemas below carry a `domain` field.
@@ -144,6 +147,28 @@ const linkTargetsField = z
     }
   });
 
+/**
+ * Refinement shared by every schema that lets a caller choose a keyword.
+ *
+ * The middleware matcher's negative lookahead is a raw string prefix test at
+ * position 1, so a keyword beginning with one of the excluded names skips the
+ * middleware altogether: "iconoclast", "assets1" and "_nextx" never reach
+ * /api/internal/resolve, so they never meet its 120/min limit, and they land on
+ * the outage-only fallback page, which performs a find plus two writes per
+ * request. Minting one is therefore a permanently unmetered redirect path on
+ * the primary domain, and an arbitrary click-count inflator. Reject at the
+ * trust boundary instead.
+ *
+ * Prefix, not equality, and derived from the matcher's own list rather than
+ * restated: the earlier restatement is exactly how this drifted the first time.
+ */
+const KEYWORD_RESERVED_MESSAGE =
+  "Keyword must not start with a name reserved by the platform " +
+  "(_next, assets, icon, apple-icon, opengraph-image, favicon.ico, robots.txt, " +
+  "sitemap.xml, manifest.webmanifest)";
+
+const isUsableKeyword = (value: string) => !startsWithMatcherExcludedName(value);
+
 export const shortenSchema = z.object({
   url: z.string().url("Invalid URL"),
   keyword: z
@@ -151,6 +176,7 @@ export const shortenSchema = z.object({
     .min(2, "Keyword must be at least 2 characters")
     .regex(/^[a-zA-Z0-9_-]*$/, "Only alphanumeric, hyphens, and underscores allowed")
     .max(100)
+    .refine(isUsableKeyword, KEYWORD_RESERVED_MESSAGE)
     .optional(),
   title: z.string().max(500).optional(),
   /**
@@ -183,6 +209,7 @@ export const editLinkSchema = z.object({
     .min(2, "Keyword must be at least 2 characters")
     .regex(/^[a-zA-Z0-9_-]+$/)
     .max(100)
+    .refine(isUsableKeyword, KEYWORD_RESERVED_MESSAGE)
     .optional(),
   statusCode: z.coerce.string().pipe(z.enum(["301", "302"])).optional(),
   isPasswordProtected: z.boolean().optional(),
@@ -239,6 +266,10 @@ export const bulkImportSchema = z
         .string()
         .regex(/^[a-zA-Z0-9_-]*$/)
         .max(100)
+        // The same reserved check the single-link schemas apply. Easy to miss
+        // here, and the worst place to miss it: this endpoint takes 500 items
+        // at a time, so one unguarded import mints the whole unmetered set.
+        .refine(isUsableKeyword, KEYWORD_RESERVED_MESSAGE)
         .optional(),
       title: z.string().max(500).optional(),
       // Per-item so a single import can span several of the caller's domains.
@@ -402,6 +433,45 @@ function refineAssociationFile(
 }
 
 /**
+ * One extra path segment a domain serves its links under, stored without
+ * slashes so the resolver composes the single canonical form.
+ *
+ * Conservative on purpose. A prefix becomes part of every link the customer
+ * hands out, so anything ambiguous (a dot, an encoded character, a second
+ * segment) is refused rather than normalised into something they did not type.
+ * Leading and trailing slashes are trimmed first, since "/l/" is the form a
+ * person naturally writes and rejecting it would only teach them to retype it.
+ *
+ * The reserved test is derived from the proxy's own BYPASS_PREFIXES and from
+ * the middleware matcher's exclusions, so a prefix can never shadow the app
+ * shell, the association files, the API the password and stats pages fetch, or
+ * a name the matcher skips before the middleware ever runs.
+ */
+const PATH_PREFIX_SEGMENT = /^[a-zA-Z0-9_-]+$/;
+
+export const pathPrefixSchema = z
+  .string()
+  .transform((value) => value.trim().replace(/^\/+/, "").replace(/\/+$/, ""))
+  .superRefine((value, ctx) => {
+    const fail = (message: string) => ctx.addIssue({ code: "custom", message });
+
+    if (value.length === 0) {
+      return fail("Path prefix must not be empty. Send null to remove it.");
+    }
+    if (value.length > PATH_PREFIX_MAXLENGTH) {
+      return fail(`Path prefix must be at most ${PATH_PREFIX_MAXLENGTH} characters`);
+    }
+    if (!PATH_PREFIX_SEGMENT.test(value)) {
+      return fail(
+        "Path prefix must be a single segment of letters, digits, hyphens, or underscores"
+      );
+    }
+    if (isReservedPathPrefix(value)) {
+      return fail(`"${value}" is reserved by the platform and cannot be used as a path prefix`);
+    }
+  });
+
+/**
  * PATCH body for a domain's deeplink configuration.
  *
  * Every field is optional and absence means "leave unchanged", so a partial
@@ -426,6 +496,7 @@ export const deeplinkConfigSchema = z.object({
     })
     .optional(),
   fallbackTarget: absoluteHttpUrl.nullable().optional(),
+  pathPrefix: pathPrefixSchema.nullable().optional(),
 });
 
 /** Optional `?domain=` filter. Accepts the primary domain as well as custom ones. */

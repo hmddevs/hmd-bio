@@ -43,6 +43,13 @@ export interface IDomain extends Document {
   };
   /** Where an unmatched path goes on a deeplink domain, instead of /not-found. */
   fallbackTarget?: string | null;
+  /**
+   * One extra path segment the domain's links are served under, stored without
+   * slashes ("l", never "/l/"), so the resolver composes the one canonical
+   * form. Null means links resolve at the root only, which is every domain
+   * that existed before this field.
+   */
+  pathPrefix?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,6 +68,12 @@ const DOMAIN_MODES: DomainMode[] = ["shortener", "deeplink"];
 // Generous cap: real association files run under 2 KB. 128 KB just guards
 // against abuse without ever being a realistic ceiling for a legitimate file.
 export const APP_LINKS_MAXLENGTH = 128 * 1024;
+
+/**
+ * Ceiling on a path prefix. One short segment is the entire use case ("l",
+ * "go", "s"), and a long one only eats into the space a keyword can use.
+ */
+export const PATH_PREFIX_MAXLENGTH = 32;
 
 const DomainSchema = new Schema<IDomain>(
   {
@@ -88,6 +101,7 @@ const DomainSchema = new Schema<IDomain>(
       assetlinks: { type: String, default: null, maxlength: APP_LINKS_MAXLENGTH },
     },
     fallbackTarget: { type: String, default: null },
+    pathPrefix: { type: String, default: null, maxlength: PATH_PREFIX_MAXLENGTH },
   },
   {
     timestamps: true,

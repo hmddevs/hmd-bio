@@ -35,7 +35,7 @@ If you are looking for somewhere to start, these carry the most risk:
 - **The internal API** — `/api/internal/*` is gated by `INTERNAL_SECRET` and is called by edge middleware and cron only. It should fail closed.
 - **Custom domains** — hostname validation, and the verification flow that attaches a domain to the Vercel project (`src/app/api/v1/domains/`).
 - **IP handling** — visitor IPs are hashed for analytics and AES-encrypted for admin-only decryption. Raw IPs must never be logged, stored in plaintext, or returned to a non-admin. Any path that breaks this is a valid report.
-- **Redirect handling** — open-redirect and protocol-smuggling variants on the short-link resolution path (`src/proxy.ts`, `src/app/[keyword]/`).
+- **Redirect handling** — open-redirect and protocol-smuggling variants on the short-link resolution path (`src/proxy.ts`, `src/app/[...keyword]/`).
 
 ## Supported versions
 

@@ -6,6 +6,8 @@
  * as the only trusted input and the request as hostile.
  */
 
+import { isReservedPathPrefix } from "@/lib/reserved-paths";
+
 /** The three buckets a user-agent is reduced to. Nothing finer is supported. */
 export type TargetPlatform = "ios" | "android" | "desktop";
 
@@ -26,6 +28,131 @@ export interface DomainConfig {
   aasa: string | null;
   assetlinks: string | null;
   fallbackTarget: string | null;
+  /**
+   * Single path segment, stored without slashes ("l", never "/l/"), or null.
+   * Optional on the wire as well as null: a config cached before this field
+   * existed must read as "no prefix" rather than as undefined behaviour.
+   */
+  pathPrefix?: string | null;
+}
+
+/**
+ * Does this first path segment name the domain's configured prefix?
+ *
+ * The single decision both entry points below are built on. It exists because
+ * the edge (`stripPathPrefix`) and the server-rendered fallback
+ * (`fallbackKeywordFromSegments`) previously re-implemented the same question
+ * with different string operations and different guards. Drift between them is
+ * the worst class of bug this feature can produce: it only shows up while the
+ * internal resolve API is down, which is exactly when nobody is in a position
+ * to debug it. Sharing the predicate makes agreement structural rather than
+ * remembered.
+ *
+ * Matching is on a whole segment and is case-sensitive, like keywords: `/list`
+ * is not a prefixed request under the prefix "l", and neither is `/L/abc`.
+ */
+export function isPathPrefixSegment(
+  segment: string,
+  prefix: string | null | undefined
+): boolean {
+  if (!prefix || typeof prefix !== "string") return false;
+  // The stored form is a single slash-free segment. A hand-edited document
+  // holding anything else degrades to root-only resolution rather than
+  // matching something like "//".
+  if (prefix.includes("/")) return false;
+  if (!segment) return false;
+  if (segment !== prefix) return false;
+
+  // Defence in depth, not the primary guard: the schema already refuses every
+  // one of these, so this is only reachable via a prefix written straight into
+  // MongoDB. Restated so such a value still cannot take a platform path, an
+  // association file, or a matcher-excluded name away from resolution.
+  if (segment.startsWith(".")) return false;
+  if (isReservedPathPrefix(segment)) return false;
+
+  return true;
+}
+
+/**
+ * Removes a domain's configured path prefix from a request path.
+ *
+ * Returns the remaining path, leading slash included, or null when the prefix
+ * does not apply. Null is the answer for every request that must keep resolving
+ * exactly as it does today: no prefix configured, or a path that does not begin
+ * with `/<prefix>/`. The caller then carries on with the original path, so a
+ * domain that adds a prefix does not lose the root-level links it already has.
+ *
+ * Segment matching is delegated to `isPathPrefixSegment`, which the fallback
+ * uses as well. `/l` on its own is left alone, so a link whose keyword happens
+ * to equal the prefix keeps resolving, and `/l/` is left alone too because it
+ * names no keyword at all.
+ */
+export function stripPathPrefix(
+  pathname: string,
+  prefix: string | null | undefined
+): string | null {
+  if (!pathname.startsWith("/")) return null;
+
+  const slash = pathname.indexOf("/", 1);
+  // Single segment: cannot be a prefixed request, and must not be treated as
+  // one, or a root link named after the prefix would stop resolving.
+  if (slash === -1) return null;
+
+  if (!isPathPrefixSegment(pathname.slice(1, slash), prefix)) return null;
+
+  // Always begins with "/", because the separator itself is kept.
+  const remainder = pathname.slice(slash);
+
+  // "/l/" carries the prefix but no keyword. Answered as "the prefix does not
+  // apply" so that this agrees with `fallbackKeywordFromSegments`, which
+  // returns null for the same request; either way the caller falls through to
+  // the same 404 the path produces today.
+  if (remainder === "/") return null;
+
+  return remainder;
+}
+
+/**
+ * Which keyword a set of path segments resolves to in the server-rendered
+ * fallback, or null when the path is not a short link at all.
+ *
+ * The fallback route is a catch-all, so it now sees paths that used to have no
+ * route and 404 outright. This function is the whole gate deciding which of
+ * those may start resolving, and it is deliberately narrow:
+ *
+ *   1 segment  — today's behaviour, byte for byte. The segment is the keyword,
+ *                including one that carries a dot, because that is what the
+ *                single dynamic route already handed to the database.
+ *   2 segments — only when the domain configures a `pathPrefix` and the first
+ *                segment equals it exactly. Everything else stays null, so a
+ *                two-segment path on a domain with no prefix keeps 404ing.
+ *   otherwise  — null. Deeper paths are the deeplink resolver's business and
+ *                are not served by the fallback, exactly as they are not today.
+ *
+ * The prefix test itself is `isPathPrefixSegment`, the same call
+ * `stripPathPrefix` makes, so the edge and the fallback cannot disagree about
+ * which keyword a request names.
+ */
+export function fallbackKeywordFromSegments(
+  segments: readonly string[] | undefined,
+  pathPrefix: string | null | undefined
+): string | null {
+  if (!segments || segments.length === 0) return null;
+
+  if (segments.length === 1) {
+    return segments[0] || null;
+  }
+
+  if (segments.length !== 2) return null;
+
+  const [first, second] = segments;
+  // An empty second segment names no keyword, which is the same answer
+  // `stripPathPrefix` gives for the trailing-slash form of the same request.
+  if (!second) return null;
+
+  if (!isPathPrefixSegment(first, pathPrefix)) return null;
+
+  return second;
 }
 
 /**

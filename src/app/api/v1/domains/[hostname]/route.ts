@@ -71,6 +71,7 @@ export async function GET(
           assetlinks: domain.appLinks?.assetlinks ?? null,
         },
         fallbackTarget: domain.fallbackTarget ?? null,
+        pathPrefix: domain.pathPrefix ?? null,
         // Association files can be up to 128KB each, so this response can grow
         // large. Acceptable here: owner-scoped, not a hot path, and Apple's CDN
         // cache invariant means these strings must never be reserialised.
@@ -99,7 +100,8 @@ const MAX_PATCH_BODY_BYTES = 768 * 1024;
 
 /**
  * Updates a domain's deeplink configuration: mode, the two association files,
- * and the fallback target. Partial by design, so a client may send one field.
+ * the fallback target, and the path prefix. Partial by design, so a client may
+ * send one field.
  */
 export async function PATCH(
   request: NextRequest,
@@ -166,6 +168,9 @@ export async function PATCH(
     if (parsed.data.fallbackTarget !== undefined) {
       updates.fallbackTarget = parsed.data.fallbackTarget;
     }
+    if (parsed.data.pathPrefix !== undefined) {
+      updates.pathPrefix = parsed.data.pathPrefix;
+    }
 
     const updated =
       Object.keys(updates).length > 0
@@ -197,6 +202,7 @@ export async function PATCH(
           assetlinks: updated.appLinks?.assetlinks ?? null,
         },
         fallbackTarget: updated.fallbackTarget ?? null,
+        pathPrefix: updated.pathPrefix ?? null,
         updatedAt: updated.updatedAt,
       },
       200,

@@ -114,7 +114,7 @@ export async function getDomainConfig(hostname: string): Promise<DomainConfig | 
 
   const doc = await Domain.findOne(
     { hostname: host, status: "active" },
-    { mode: 1, appLinks: 1, fallbackTarget: 1 }
+    { mode: 1, appLinks: 1, fallbackTarget: 1, pathPrefix: 1 }
   ).lean();
 
   const config: DomainConfig | null = doc
@@ -123,6 +123,7 @@ export async function getDomainConfig(hostname: string): Promise<DomainConfig | 
         aasa: doc.appLinks?.aasa ?? null,
         assetlinks: doc.appLinks?.assetlinks ?? null,
         fallbackTarget: doc.fallbackTarget ?? null,
+        pathPrefix: doc.pathPrefix ?? null,
       }
     : null;
 
