@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { isBlockedHostname, isPrimaryHost, PRIMARY_DOMAIN } from "@/lib/domains";
+import {
+  isBlockedHostname,
+  isPrimaryHost,
+  PRIMARY_DOMAIN,
+  PUBLIC_SUFFIXES,
+} from "@/lib/domains";
 
 // --- Hostname primitives -------------------------------------------------
 // Defined first because the link schemas below carry a `domain` field.
@@ -183,29 +188,10 @@ export const adminEditProfileSchema = z.object({
  * away, so it could never serve links).
  */
 /**
- * Multi-label public suffixes that must never be claimable on their own.
- *
- * The syntax check only requires one dot, so `co.uk` passes it and would
- * otherwise be accepted as a registrable domain. This is a deliberately short
- * hardcoded list of the common ones rather than a full Public Suffix List
- * dependency: it matches the existing blocklist approach, and the real guard is
- * still DNS TXT verification, which nobody can pass for a suffix they do not
- * control.
+ * The suffix list lives in `@/lib/domains`, which also uses it for apex
+ * detection. The syntax check only requires one dot, so `co.uk` passes it and
+ * would otherwise be accepted as a registrable domain.
  */
-const PUBLIC_SUFFIXES = new Set([
-  "co.uk", "org.uk", "me.uk", "gov.uk", "ac.uk", "net.uk", "ltd.uk", "plc.uk",
-  "com.au", "net.au", "org.au", "edu.au", "gov.au", "id.au",
-  "co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp",
-  "com.br", "net.br", "org.br", "gov.br",
-  "co.nz", "net.nz", "org.nz", "govt.nz", "ac.nz",
-  "co.za", "org.za", "net.za", "gov.za", "ac.za",
-  "com.tr", "net.tr", "org.tr", "gov.tr", "edu.tr", "web.tr",
-  "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn",
-  "co.in", "net.in", "org.in", "gov.in", "ac.in",
-  "com.mx", "com.ar", "com.sg", "com.hk", "com.tw", "co.kr", "co.il", "co.id",
-  "com.pl", "com.ua", "com.ru", "co.th", "com.my", "com.ph", "com.vn",
-]);
-
 export const hostnameSchema = hostnameSyntaxSchema.superRefine((value, ctx) => {
   const fail = (message: string) => ctx.addIssue({ code: "custom", message });
 

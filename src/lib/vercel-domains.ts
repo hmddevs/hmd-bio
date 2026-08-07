@@ -20,6 +20,7 @@
  */
 
 import { captureError } from "@/lib/errors";
+import { vercelPointingRecord } from "@/lib/domains";
 
 const VERCEL_API_BASE = "https://api.vercel.com";
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -374,6 +375,19 @@ export async function getDomainStatus(
     const ipv4 = firstRecordValue(configBody?.recommendedIPv4);
     if (ipv4) {
       requiredRecords.push({ type: "A", name: hostname, value: ipv4 });
+    }
+
+    // The config endpoint does not always return recommendations, and an empty
+    // list while misconfigured leaves the user with an instruction and no
+    // record to follow it with. Fall back to the record we know is correct for
+    // this hostname. Vercel's own values win whenever it gives us any.
+    if (requiredRecords.length === 0) {
+      const fallback = vercelPointingRecord(hostname);
+      requiredRecords.push({
+        type: fallback.recordType,
+        name: fallback.name,
+        value: fallback.value,
+      });
     }
   }
 
