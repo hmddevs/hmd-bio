@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   check:
-    name: Lint and typecheck
+    name: Lint, typecheck and test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -45,3 +45,12 @@ jobs:
       - name: Typecheck
         if: "!cancelled() && steps.install.outcome == 'success'"
         run: npx tsc --noEmit
+
+      # Gated the same way as Typecheck, so it reports independently of lint.
+      # This step is load-bearing beyond ordinary coverage: the only thing
+      # stopping the middleware matcher literal in src/proxy.ts drifting from
+      # MATCHER_EXCLUDED_NAMES is a test, and a drift guard nothing executes is
+      # not a guard at all.
+      - name: Test
+        if: "!cancelled() && steps.install.outcome == 'success'"
+        run: pnpm test

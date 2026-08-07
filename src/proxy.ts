@@ -4,31 +4,13 @@ import {
   APP_ASSOCIATION_PATHS,
   composeForwardedTarget,
   parseHttpUrl,
+  stripPathPrefix,
   type DomainConfig,
 } from "@/lib/deeplink";
-
-/**
- * Paths that belong to the application shell rather than to short-link
- * resolution. On a platform host these are handed straight to Next; on a custom
- * domain they are redirected to the primary domain instead (see below).
- */
-const BYPASS_PREFIXES = [
-  "/admin",
-  "/api",
-  "/bookmarklet",
-  "/dashboard",
-  "/docs",
-  "/login",
-  "/signup",
-  "/preview",
-  "/password",
-  "/not-found",
-  "/stats",
-  "/terms",
-  "/privacy",
-  "/cookies",
-  "/aup",
-];
+// Shared with the domain configuration schema, which refuses a `pathPrefix`
+// that would shadow one of these. Defined in its own module so the two cannot
+// drift; see src/lib/reserved-paths.ts.
+import { BYPASS_PREFIXES } from "@/lib/reserved-paths";
 
 /**
  * The only application paths a custom domain serves. Everything a short link
@@ -255,11 +237,34 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // ── Per-domain path prefix ──
+  //
+  // A domain may serve its links under one extra segment, so that a customer
+  // whose codes are already in circulation at /l/<code> can migrate without
+  // breaking them. Strictly additive: with no prefix configured, and on any
+  // path that does not begin with `/<prefix>/`, `resolvePath` stays the
+  // request's own path and everything below behaves exactly as before. A
+  // prefixed domain therefore keeps resolving its root-level links too.
+  //
+  // Runs after the association-file branch on purpose. Those are absolute paths
+  // that Apple and Google fetch by name, and they must never be shadowed by a
+  // prefix; the schema also refuses "well-known" for the same reason.
+  //
+  // Only consulted when the path has a second segment, since a single-segment
+  // request cannot be prefixed and must not pay for a config lookup: that is
+  // the hot redirect path.
+  let resolvePath = pathname;
+  if (onCustomDomain && pathname.indexOf("/", 1) !== -1) {
+    const config = await loadDomainConfig();
+    const stripped = stripPathPrefix(pathname, config?.pathPrefix);
+    if (stripped !== null) resolvePath = stripped;
+  }
+
   // Check for preview suffix (keyword+)
-  const isPreview = pathname.endsWith("+");
+  const isPreview = resolvePath.endsWith("+");
   let keyword = isPreview
-    ? pathname.slice(1, -1)
-    : pathname.slice(1);
+    ? resolvePath.slice(1, -1)
+    : resolvePath.slice(1);
 
   // Path left over after the keyword, forwarded onto the target only when the
   // link opts in. Empty for every request that is not a deeplink lookup.
@@ -402,6 +407,18 @@ export const config = {
      *
      * /api is matched too, and returns early for both host kinds, so the
      * middleware's own call to /api/internal/resolve cannot recurse.
+     *
+     * Must stay a literal: Turbopack parses this field statically and rejects
+     * anything it cannot read at compile time, including a function call. The
+     * names in it are therefore mirrored by MATCHER_EXCLUDED_NAMES, and
+     * `buildMatcherPattern()` reproduces this exact string; a test asserts the
+     * two are byte-identical, so the list and the regex cannot drift.
+     *
+     * They diverged once already: the `pathPrefix` validation matched these
+     * names by whole segment, while this lookahead is a RAW PREFIX TEST at
+     * position 1. That let a tenant configure "icons" and take every request
+     * under it out of the middleware, past the resolve endpoint and its rate
+     * limit, onto the outage-only fallback page.
      */
     "/((?!_next|assets|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|icon|apple-icon|opengraph-image).*)",
   ],
