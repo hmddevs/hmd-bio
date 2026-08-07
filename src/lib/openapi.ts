@@ -28,6 +28,13 @@ export const openApiSpec = {
     { name: "Stats", description: "Analytics — requires a dashboard session" },
     { name: "Account", description: "API keys, password & email — requires a dashboard session" },
     { name: "Auth", description: "Signup and email verification — no session required" },
+    {
+      name: "Domains",
+      description:
+        "Custom domain management, requires a dashboard session. Claim a hostname you own, prove " +
+        "ownership via a DNS TXT record, add the pointing record Vercel needs to serve it, then " +
+        "create short links on it through /api/v1/shorten and /api/v1/links.",
+    },
     { name: "Admin", description: "Admin-only user and click management — requires a dashboard session with the admin role" },
   ],
   paths: {
@@ -69,6 +76,7 @@ export const openApiSpec = {
                   statusCode: 201,
                   data: {
                     keyword: "my-link",
+                    domain: "hmd.bio",
                     url: "https://example.com/some/long/path",
                     shortUrl: "https://hmd.bio/my-link",
                     title: "Example Domain",
@@ -79,7 +87,7 @@ export const openApiSpec = {
             },
           },
           "400": {
-            description: "Validation error, or disallowed URL protocol",
+            description: "Validation error, disallowed URL protocol, or invalid `domain` hostname",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -88,7 +96,9 @@ export const openApiSpec = {
             },
           },
           "403": {
-            description: "Turnstile token missing or invalid",
+            description:
+              "Turnstile token missing or invalid, or `domain` is not the primary domain and either " +
+              "the caller is unauthenticated or the domain is not an `active` Domain owned by the caller",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
@@ -219,6 +229,17 @@ export const openApiSpec = {
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 15 } },
+          {
+            name: "domain",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description:
+              "Filter to a single hostname. Omitted returns links across every domain the caller " +
+              "owns (or, for an admin, every domain on the platform). This differs from the single-link " +
+              "endpoints below (GET/PUT/DELETE /api/v1/links/{keyword}), where an omitted `domain` " +
+              "defaults to the primary domain (hmd.bio) rather than searching every domain.",
+          },
           { name: "search", in: "query", schema: { type: "string", maxLength: 200 }, description: "Case-insensitive substring match against keyword, url, and title" },
           { name: "sort", in: "query", schema: { type: "string", enum: ["keyword", "url", "clicks", "createdAt"], default: "createdAt" } },
           { name: "order", in: "query", schema: { type: "string", enum: ["asc", "desc"], default: "desc" } },
@@ -264,7 +285,19 @@ export const openApiSpec = {
         tags: ["Links"],
         summary: "Get a link",
         security: [{ session: [] }, { BearerAuth: [] }],
-        parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
+        parameters: [
+          { $ref: "#/components/parameters/KeywordPath" },
+          {
+            name: "domain",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description:
+              "Hostname the link lives on. Omitted defaults to the primary domain (hmd.bio), unlike " +
+              "the list endpoint (GET /api/v1/links) where an omitted `domain` searches every domain " +
+              "the caller owns; a single-record route has to resolve to exactly one domain.",
+          },
+        ],
         responses: {
           "200": {
             description: "Link details, including the encrypted-at-rest password hash omitted",
@@ -279,6 +312,15 @@ export const openApiSpec = {
               },
             },
           },
+          "400": {
+            description: "Invalid `domain` query parameter",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 400, error: "Invalid domain" },
+              },
+            },
+          },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
@@ -289,7 +331,20 @@ export const openApiSpec = {
         tags: ["Links"],
         summary: "Update a link",
         security: [{ session: [] }, { BearerAuth: [] }],
-        parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
+        parameters: [
+          { $ref: "#/components/parameters/KeywordPath" },
+          {
+            name: "domain",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description:
+              "Selects which domain's link to edit, taking precedence over `domain` in the request " +
+              "body. Omitted, both default to the primary domain (hmd.bio); as with GET/DELETE on this " +
+              "route, an absent `domain` never means \"search every domain\" the way it does on the " +
+              "list endpoint. Never moves a link between domains.",
+          },
+        ],
         requestBody: {
           content: {
             "application/json": {
@@ -333,14 +388,32 @@ export const openApiSpec = {
         summary: "Delete a link",
         description: "Deletes the link and its click log.",
         security: [{ session: [] }, { BearerAuth: [] }],
-        parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
+        parameters: [
+          { $ref: "#/components/parameters/KeywordPath" },
+          {
+            name: "domain",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Hostname the link lives on. Omitted defaults to the primary domain (hmd.bio).",
+          },
+        ],
         responses: {
           "200": {
             description: "Deleted",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ApiSuccessEnvelope" },
-                example: { success: true, statusCode: 200, data: { deleted: "my-link" } },
+                example: { success: true, statusCode: 200, data: { deleted: "my-link", domain: "hmd.bio" } },
+              },
+            },
+          },
+          "400": {
+            description: "Invalid `domain` query parameter",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 400, error: "Invalid domain" },
               },
             },
           },
@@ -577,7 +650,10 @@ export const openApiSpec = {
       get: {
         tags: ["Links"],
         summary: "Export links as CSV",
-        description: "Streams a CSV of the caller's links (or every link, for admins).",
+        description:
+          "Streams a CSV of the caller's links (or every link, for admins). Breaking change: the " +
+          "`domain` column now leads the CSV (previously `keyword` was first); a client parsing by " +
+          "column position, not header, needs updating.",
         security: [{ session: [] }, { BearerAuth: [] }],
         responses: {
           "200": {
@@ -585,7 +661,7 @@ export const openApiSpec = {
             content: {
               "text/csv": {
                 schema: { type: "string" },
-                example: "keyword,url,title,clicks,statusCode,createdAt\nmy-link,https://example.com,Example,42,301,2026-07-02T10:00:00.000Z\n",
+                example: "domain,keyword,url,title,clicks,statusCode,createdAt\nhmd.bio,my-link,https://example.com,Example,42,301,2026-07-02T10:00:00.000Z\n",
               },
             },
           },
@@ -1056,6 +1132,422 @@ export const openApiSpec = {
         },
       },
     },
+    "/api/v1/domains": {
+      get: {
+        tags: ["Domains"],
+        summary: "List your custom domains",
+        description: "Always scoped to the caller's own domains, with no admin bypass, because the response includes each domain's live verification token.",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "The caller's domains and their per-user cap",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: {
+                          type: "object",
+                          properties: {
+                            domains: { type: "array", items: { $ref: "#/components/schemas/Domain" } },
+                            limit: { type: "integer", description: "Maximum number of domains this user may attach" },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "429": { $ref: "#/components/responses/RateLimited" },
+        },
+      },
+      post: {
+        tags: ["Domains"],
+        summary: "Claim a domain",
+        description:
+          "Registers a hostname you own. The domain starts in `pending_dns`; create the returned TXT " +
+          "and pointing records at your DNS provider, then call POST /api/v1/domains/{hostname}/verify. " +
+          "An abandoned claim (`pending_dns` or `failed`, untouched for 48 hours) by a different user is " +
+          "released automatically to let the real owner take it over.",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["hostname"],
+                properties: {
+                  hostname: {
+                    type: "string",
+                    description:
+                      "Bare hostname (no scheme, port, path, or leading 'www.'). Cannot be hmd.bio or a " +
+                      "subdomain of it, a bare public suffix, or a hostname on the impersonation blocklist.",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Domain claimed, awaiting DNS verification",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: {
+                          type: "object",
+                          properties: {
+                            hostname: { type: "string" },
+                            status: { type: "string", example: "pending_dns" },
+                            linkCount: { type: "integer" },
+                            createdAt: { type: "string", format: "date-time" },
+                            dnsRecord: { $ref: "#/components/schemas/DnsRecord" },
+                            pointingRecord: { $ref: "#/components/schemas/PointingRecord" },
+                            nextStep: { type: "string" },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+                example: {
+                  success: true,
+                  statusCode: 201,
+                  data: {
+                    hostname: "go.example.com",
+                    status: "pending_dns",
+                    linkCount: 0,
+                    createdAt: "2026-07-02T10:00:00.000Z",
+                    dnsRecord: { recordType: "TXT", name: "_hmd-verify.go.example.com", value: "abc123..." },
+                    pointingRecord: { recordType: "CNAME", name: "go", value: "cname.vercel-dns.com" },
+                    nextStep:
+                      "Create both records at your DNS provider, then call POST /api/v1/domains/{hostname}/verify.",
+                  },
+                },
+              },
+            },
+          },
+          "400": { $ref: "#/components/responses/ValidationError" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": {
+            description: "The per-user domain cap has been reached",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 403, error: "You can attach at most 3 domains" },
+              },
+            },
+          },
+          "409": {
+            description: "This hostname is already claimed, by this or another user",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 409, error: "This domain is already claimed" },
+              },
+            },
+          },
+          "429": { $ref: "#/components/responses/RateLimited" },
+        },
+      },
+    },
+    "/api/v1/domains/{hostname}": {
+      get: {
+        tags: ["Domains"],
+        summary: "Get one domain",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        parameters: [{ $ref: "#/components/parameters/HostnamePath" }],
+        responses: {
+          "200": {
+            description: "The domain",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    { type: "object", properties: { data: { $ref: "#/components/schemas/Domain" } } },
+                  ],
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Invalid hostname",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 400, error: "Invalid hostname" },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": {
+            description: "No domain with that hostname owned by the caller",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 404, error: "Domain not found" },
+              },
+            },
+          },
+          "429": { $ref: "#/components/responses/RateLimited" },
+        },
+      },
+      delete: {
+        tags: ["Domains"],
+        summary: "Remove a domain",
+        description:
+          "Detaches the hostname from Vercel and deletes the domain record. Links already created on " +
+          "it are kept, never deleted, but are stamped as detached and will stop resolving.",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        parameters: [
+          { $ref: "#/components/parameters/HostnamePath" },
+          {
+            name: "force",
+            in: "query",
+            required: false,
+            schema: { type: "string", enum: ["true"] },
+            description: "Required (set to \"true\") to remove a domain that still has links attached; otherwise the request is refused with 409.",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Domain removed",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: {
+                          type: "object",
+                          properties: {
+                            deleted: { type: "string" },
+                            orphanedLinks: { type: "integer" },
+                            detachedLinks: { type: "integer" },
+                            message: { type: "string" },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Invalid hostname",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 400, error: "Invalid hostname" },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": {
+            description: "No domain with that hostname owned by the caller",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 404, error: "Domain not found" },
+              },
+            },
+          },
+          "409": {
+            description: "The domain still has links and `?force=true` was not supplied. The error message states how many links would be orphaned.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: {
+                  success: false,
+                  statusCode: 409,
+                  error: "This domain still has 4 links. They will stop resolving if you remove it. Repeat with ?force=true to continue.",
+                },
+              },
+            },
+          },
+          "429": { $ref: "#/components/responses/RateLimited" },
+          "502": {
+            description: "Vercel refused to detach the domain; the record is left in place and the caller should retry",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 502, error: "Could not detach the domain from the platform. Try again." },
+              },
+            },
+          },
+          "503": {
+            description: "Domain management is temporarily unavailable (Vercel API error)",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 503, error: "Domain management is temporarily unavailable" },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/v1/domains/{hostname}/verify": {
+      post: {
+        tags: ["Domains"],
+        summary: "Verify domain ownership and provision it",
+        description:
+          "Checks the DNS TXT record, attaches the hostname to the Vercel project, and polls briefly " +
+          "for certificate issuance. Idempotent: calling it again on an already-active domain simply " +
+          "confirms it is active without re-checking anything, and calling it again on a `provisioning` " +
+          "domain re-checks Vercel's status without re-reading the TXT record. Rate-limited to 6 " +
+          "attempts per hour per user, stricter than the shared authenticated tier, since each call " +
+          "walks a DNS zone the caller claims to own.",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        parameters: [{ $ref: "#/components/parameters/HostnamePath" }],
+        responses: {
+          "200": {
+            description: "Domain is active (or already was)",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: {
+                          allOf: [
+                            { $ref: "#/components/schemas/DomainVerifyResult" },
+                            { type: "object", properties: { message: { type: "string", example: "Domain is active" } } },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "202": {
+            description:
+              "Ownership verified, but Vercel still reports the domain misconfigured (DNS does not yet " +
+              "point at Vercel). The domain remains in `provisioning`; the response lists the TXT record " +
+              "and any further DNS records Vercel still requires.",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: {
+                          allOf: [
+                            { $ref: "#/components/schemas/DomainVerifyResult" },
+                            {
+                              type: "object",
+                              properties: {
+                                message: {
+                                  type: "string",
+                                  example: "Ownership verified. Finish DNS setup to bring the domain online.",
+                                },
+                                dnsRecord: { $ref: "#/components/schemas/DnsRecord" },
+                                requiredRecords: {
+                                  type: "array",
+                                  description: "CNAME and/or A records Vercel still needs to route traffic to this hostname",
+                                  items: {
+                                    type: "object",
+                                    properties: {
+                                      type: { type: "string", enum: ["CNAME", "A"] },
+                                      name: { type: "string" },
+                                      value: { type: "string" },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "400": {
+            description:
+              "TXT record missing or does not match the expected token, or Vercel rejected the " +
+              "hostname/attachment for a reason other than it being in use elsewhere. The domain " +
+              "transitions to `failed` and `failureReason` explains why.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 400, error: "No TXT record was found at the verification name." },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": {
+            description: "This domain is suspended",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 403, error: "This domain is suspended. Contact support." },
+              },
+            },
+          },
+          "404": {
+            description: "No domain with that hostname owned by the caller",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 404, error: "Domain not found" },
+              },
+            },
+          },
+          "409": {
+            description: "This hostname is already attached to another Vercel project",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 409, error: "This domain is already in use on another account" },
+              },
+            },
+          },
+          "429": {
+            description: "More than 6 verification attempts from this user in the last hour",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 429, error: "Too many verification attempts. Try again later." },
+              },
+            },
+          },
+          "503": {
+            description: "Vercel's domains API is temporarily unavailable",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 503, error: "Domain provisioning is temporarily unavailable" },
+              },
+            },
+          },
+        },
+      },
+    },
     "/api/v1/admin/users": {
       get: {
         tags: ["Admin"],
@@ -1275,6 +1767,13 @@ export const openApiSpec = {
         schema: { type: "string" },
         description: "The short link's keyword",
       },
+      HostnamePath: {
+        name: "hostname",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+        description: "The custom domain's hostname, URL-encoded if it contains characters that need it",
+      },
       Format: {
         name: "format",
         in: "query",
@@ -1389,6 +1888,14 @@ export const openApiSpec = {
             description: "Custom keyword. Randomly generated when omitted.",
           },
           title: { type: "string", maxLength: 500 },
+          domain: {
+            type: "string",
+            description:
+              "Hostname to create the link on. Omitted defaults to the primary domain (hmd.bio), " +
+              "which is open to anonymous callers. Any other hostname requires an authenticated " +
+              "caller (session or Bearer API key) who owns an `active` Domain record for it; " +
+              "otherwise the request is refused with 403.",
+          },
           turnstileToken: {
             type: "string",
             description: "Cloudflare Turnstile token, required unless dev mode",
@@ -1399,6 +1906,7 @@ export const openApiSpec = {
         type: "object",
         properties: {
           keyword: { type: "string" },
+          domain: { type: "string" },
           url: { type: "string", format: "uri" },
           shortUrl: { type: "string", format: "uri" },
           title: { type: "string" },
@@ -1408,6 +1916,13 @@ export const openApiSpec = {
       EditLinkRequest: {
         type: "object",
         properties: {
+          domain: {
+            type: "string",
+            description:
+              "Hostname the link currently lives on. Ignored when the `?domain=` query parameter is " +
+              "present, since that takes precedence. Defaults to the primary domain. Selects which " +
+              "link to update; it never moves a link to a different domain.",
+          },
           url: { type: "string", format: "uri" },
           title: { type: "string", maxLength: 500 },
           keyword: { type: "string", minLength: 2, maxLength: 100, pattern: "^[a-zA-Z0-9_-]+$" },
@@ -1425,6 +1940,8 @@ export const openApiSpec = {
         type: "object",
         properties: {
           keyword: { type: "string" },
+          domain: { type: "string", description: "Hostname the link resolves on. `hmd.bio` for links predating custom domains." },
+          shortUrl: { type: "string", format: "uri", description: "Full short URL, built from `domain` and `keyword`" },
           url: { type: "string", format: "uri" },
           title: { type: "string" },
           clicks: { type: "integer" },
@@ -1574,6 +2091,67 @@ export const openApiSpec = {
           os: { type: "string" },
           referrer: { type: "string" },
           userAgent: { type: "string" },
+        },
+      },
+      DnsRecord: {
+        type: "object",
+        properties: {
+          recordType: { type: "string", enum: ["TXT"] },
+          name: { type: "string", description: "e.g. _hmd-verify.go.example.com" },
+          value: { type: "string" },
+        },
+      },
+      PointingRecord: {
+        type: "object",
+        description:
+          "The DNS record that makes the hostname actually serve traffic, distinct from the TXT " +
+          "record that only proves ownership. An apex domain gets an A record; a subdomain gets a CNAME.",
+        properties: {
+          recordType: { type: "string", enum: ["A", "CNAME"] },
+          name: { type: "string", description: "The label to enter at the DNS provider, e.g. \"@\" for an apex or \"go\" for a subdomain" },
+          value: { type: "string" },
+        },
+      },
+      Domain: {
+        type: "object",
+        properties: {
+          hostname: { type: "string" },
+          status: {
+            type: "string",
+            enum: ["pending_dns", "verifying", "provisioning", "active", "failed", "suspended"],
+            description:
+              "pending_dns: claimed, TXT record not yet checked. verifying: TXT check in progress. " +
+              "provisioning: ownership proven, attached to Vercel, DNS/certificate not yet ready. " +
+              "active: serving traffic. failed: last verification attempt failed (see failureReason). " +
+              "suspended: disabled by an admin.",
+          },
+          verifiedAt: { type: "string", format: "date-time", nullable: true },
+          linkCount: { type: "integer" },
+          failureReason: { type: "string", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+          dnsRecord: {
+            allOf: [{ $ref: "#/components/schemas/DnsRecord" }],
+            nullable: true,
+            description: "The TXT record proving ownership. Null once the domain is active; otherwise still required.",
+          },
+          pointingRecord: {
+            allOf: [{ $ref: "#/components/schemas/PointingRecord" }],
+            nullable: true,
+            description: "The A/CNAME record that routes traffic to the hostname. Null once the domain is active; otherwise still required.",
+          },
+        },
+      },
+      DomainVerifyResult: {
+        type: "object",
+        properties: {
+          hostname: { type: "string" },
+          status: {
+            type: "string",
+            enum: ["provisioning", "active", "failed"],
+            description: "The only statuses this endpoint can leave a domain in",
+          },
+          verifiedAt: { type: "string", format: "date-time", nullable: true },
+          failureReason: { type: "string", nullable: true },
         },
       },
       UserStats: {
