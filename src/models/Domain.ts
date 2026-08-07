@@ -8,6 +8,12 @@ export type DomainStatus =
   | "failed"
   | "suspended";
 
+// A deeplink domain is a different kind of tenant, not a shortener domain
+// with extra fields set. Keeping this as its own mode (rather than inferring
+// it from appLinks being populated) stops the two roles being combined in
+// states that make no sense.
+export type DomainMode = "shortener" | "deeplink";
+
 export interface IDomain extends Document {
   hostname: string;
   owner: Types.ObjectId;
@@ -24,6 +30,19 @@ export interface IDomain extends Document {
   suspendedAt?: Date | null;
   /** Consecutive DNS re-verification failures since the last success, reset on a match. */
   consecutiveFailures: number;
+  mode: DomainMode;
+  /**
+   * Raw text of the two association files, exactly as the customer supplied
+   * them. String, never Mixed/Object: parsing and re-stringifying reorders
+   * keys, and Apple's CDN caches whatever it first served, so we must be able
+   * to serve the original bytes back verbatim.
+   */
+  appLinks: {
+    aasa: string | null;
+    assetlinks: string | null;
+  };
+  /** Where an unmatched path goes on a deeplink domain, instead of /not-found. */
+  fallbackTarget?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +55,12 @@ const DOMAIN_STATUSES: DomainStatus[] = [
   "failed",
   "suspended",
 ];
+
+const DOMAIN_MODES: DomainMode[] = ["shortener", "deeplink"];
+
+// Generous cap: real association files run under 2 KB. 128 KB just guards
+// against abuse without ever being a realistic ceiling for a legitimate file.
+const APP_LINKS_MAXLENGTH = 128 * 1024;
 
 const DomainSchema = new Schema<IDomain>(
   {
@@ -57,6 +82,12 @@ const DomainSchema = new Schema<IDomain>(
     suspendedReason: { type: String, default: null },
     suspendedAt: { type: Date, default: null },
     consecutiveFailures: { type: Number, default: 0, min: 0 },
+    mode: { type: String, enum: DOMAIN_MODES, default: "shortener" },
+    appLinks: {
+      aasa: { type: String, default: null, maxlength: APP_LINKS_MAXLENGTH },
+      assetlinks: { type: String, default: null, maxlength: APP_LINKS_MAXLENGTH },
+    },
+    fallbackTarget: { type: String, default: null },
   },
   {
     timestamps: true,

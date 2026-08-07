@@ -15,6 +15,7 @@ import { Domain } from "@/models/Domain";
 import { getRedis } from "@/lib/redis";
 import { captureError } from "@/lib/errors";
 import { PRIMARY_DOMAIN, normaliseHost } from "@/lib/domains";
+import { invalidateDomainConfig } from "@/lib/domain-config-cache";
 
 /**
  * Sixty seconds. Deliberately short: it bounds how long a suspended domain can
@@ -75,10 +76,17 @@ export async function isDomainServable(hostname: string): Promise<boolean> {
  * MongoDB. Call this whenever a Domain's status changes (activation,
  * suspension, deletion). Best-effort: a failure here only means the change
  * takes up to TTL_SECONDS to take effect.
+ *
+ * The deeplink configuration cache is dropped alongside it. Both are keyed on
+ * the same document and both are gated on `status: "active"`, so a suspension
+ * that cleared only one of them would leave a suspended domain still serving
+ * its association files.
  */
 export async function invalidateDomainStatus(hostname: string): Promise<void> {
   const host = normaliseHost(hostname);
   if (!host || host === PRIMARY_DOMAIN) return;
+
+  await invalidateDomainConfig(host);
 
   const redis = getRedis();
   if (!redis) return;
