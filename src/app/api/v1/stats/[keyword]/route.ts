@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Link } from "@/models/Link";
+import { Link, LIVE_LINK_FILTER } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth, requireOwnership } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
+import { domainFromQueryOrHost } from "@/lib/domain-access";
+import { buildShortUrl } from "@/lib/domains";
 
 function periodToDate(period: string): Date | null {
   const now = new Date();
@@ -37,9 +39,15 @@ export async function GET(
   try {
     const { keyword } = await params;
     const period = request.nextUrl.searchParams.get("period") || "all";
+
+    // Falls back to the request's Host so the "keyword+" preview served on a
+    // custom domain scopes itself correctly without a query parameter.
+    const domain = domainFromQueryOrHost(request);
+    if (!domain) return apiError("Invalid domain", 400);
+
     await connectDB();
 
-    const link = await Link.findOne({ keyword }).lean();
+    const link = await Link.findOne({ domain, keyword, ...LIVE_LINK_FILTER }).lean();
     if (!link) {
       return apiError("Short URL not found", 404);
     }
@@ -47,7 +55,9 @@ export async function GET(
     const forbidden = requireOwnership(link, session);
     if (forbidden) return forbidden;
 
-    const matchFilter: Record<string, unknown> = { keyword };
+    // Every click aggregation below inherits this filter, so analytics can
+    // never merge two tenants' clicks on the same keyword.
+    const matchFilter: Record<string, unknown> = { domain, keyword };
     const since = periodToDate(period);
     if (since) {
       matchFilter.createdAt = { $gte: since };
@@ -113,6 +123,8 @@ export async function GET(
 
     return apiSuccess({
       keyword: link.keyword,
+      domain: link.domain,
+      shortUrl: buildShortUrl(link.domain, link.keyword),
       url: link.url,
       title: link.title,
       clicks: link.clicks,

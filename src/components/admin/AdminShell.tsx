@@ -23,6 +23,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import LinkIcon from "@mui/icons-material/Link";
 import PeopleIcon from "@mui/icons-material/People";
+import PublicIcon from "@mui/icons-material/Public";
 import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
 
@@ -32,6 +33,7 @@ const navItems = [
   { label: "Dashboard", href: "/admin", icon: <DashboardIcon /> },
   { label: "Users", href: "/admin/users", icon: <PeopleIcon /> },
   { label: "Links", href: "/admin/links", icon: <LinkIcon /> },
+  { label: "Domains", href: "/admin/domains", icon: <PublicIcon /> },
   { label: "Settings", href: "/admin/settings", icon: <SettingsIcon /> },
 ];
 

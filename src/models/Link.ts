@@ -1,6 +1,17 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { PRIMARY_DOMAIN } from "../lib/domains";
 
 export interface ILink extends Document {
+  // Denormalised hostname the link lives on. Uniqueness is (domain, keyword),
+  // never keyword alone.
+  domain: string;
+  /**
+   * Set when the Domain record this link lives on was removed or taken over.
+   * A stamped link is kept for the original owner's records but must never
+   * resolve or be read publicly again, so the next owner of the hostname can
+   * never inherit it. Null (or absent) means live.
+   */
+  domainDetachedAt?: Date | null;
   keyword: string;
   url: string;
   title: string;
@@ -23,11 +34,17 @@ export interface ILink extends Document {
 
 const LinkSchema = new Schema<ILink>(
   {
+    domain: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+      default: PRIMARY_DOMAIN,
+    },
+    domainDetachedAt: { type: Date, default: null },
     keyword: {
       type: String,
       required: true,
-      unique: true,
-      index: true,
       trim: true,
       lowercase: false,
     },
@@ -51,9 +68,24 @@ const LinkSchema = new Schema<ILink>(
   }
 );
 
+// Uniqueness is compound: the same keyword may exist once per domain. This
+// index also serves the redirect lookup, findOne({ domain, keyword }).
+LinkSchema.index({ domain: 1, keyword: 1 }, { unique: true });
+
 // TTL index for auto-expiring links — MongoDB removes docs after expiresAt
 LinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, sparse: true });
 LinkSchema.index({ owner: 1 }, { sparse: true });
+
+/**
+ * The filter fragment every public read of a link must carry alongside
+ * `{ domain, keyword }`: resolution, expand, stats, and the preview page.
+ *
+ * `domainDetachedAt: null` also matches documents where the field is absent,
+ * which is every link written before this field existed, so no backfill is
+ * needed. Owner-scoped dashboard listings deliberately do not apply it: a user
+ * keeps seeing their own history after a domain is removed.
+ */
+export const LIVE_LINK_FILTER = { domainDetachedAt: null } as const;
 
 export const Link: Model<ILink> =
   mongoose.models.Link || mongoose.model<ILink>("Link", LinkSchema);

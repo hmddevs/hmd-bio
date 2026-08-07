@@ -1,14 +1,17 @@
 import type { MetadataRoute } from "next";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
+import { PRIMARY_DOMAIN } from "@/lib/domains";
 
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   await connectDB();
 
+  // Primary-domain links only. A tenant's links live on their own hostname and
+  // do not belong in this site's sitemap.
   const links = await Link.find(
-    { isPasswordProtected: false },
+    { domain: PRIMARY_DOMAIN, isPasswordProtected: false },
     { keyword: 1, updatedAt: 1 }
   )
     .sort({ createdAt: -1 })

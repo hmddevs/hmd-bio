@@ -7,12 +7,26 @@ import { authenticateRequest, requireTurnstile } from "@/lib/auth";
 import { hashIP, encryptIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
+import { Domain } from "@/models/Domain";
+import { checkDomainWritable } from "@/lib/domain-access";
+import { PRIMARY_DOMAIN, buildShortUrl } from "@/lib/domains";
 import {
   generateKeyword,
   isReservedKeyword,
   isAllowedProtocol,
   fetchPageTitle,
 } from "@/lib/utils";
+
+/** MongoDB's duplicate-key error code, raised by the (domain, keyword) index. */
+const DUPLICATE_KEY = 11000;
+
+function isDuplicateKeyError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: number }).code === DUPLICATE_KEY
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +36,7 @@ export async function POST(request: NextRequest) {
       return apiError(parsed.error.issues[0].message, 400);
     }
 
-    const { url, keyword: customKeyword, title, turnstileToken } = parsed.data;
+    const { url, keyword: customKeyword, title, domain, turnstileToken } = parsed.data;
 
     // Cloudflare Turnstile verification: rejects a missing/invalid token
     // whenever TURNSTILE_SECRET_KEY is configured, skips only in dev mode.
@@ -46,21 +60,35 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
+    // A non-primary domain must belong to the caller and be active. Anonymous
+    // callers are refused outright, so the public shortener can only ever write
+    // to the primary domain.
+    const access = await checkDomainWritable(domain, user?.id ?? null);
+    if (!access.ok) {
+      return apiError(access.message, access.status);
+    }
+    const targetDomain = access.domain;
+
     // Generate or validate keyword
     let keyword = customKeyword?.trim() || generateKeyword();
 
-    if (isReservedKeyword(keyword)) {
+    // Reserved keywords protect the platform's own routes, which only exist on
+    // the primary domain. What a tenant does with go.example.com/admin is their
+    // business.
+    if (targetDomain === PRIMARY_DOMAIN && isReservedKeyword(keyword)) {
       return apiError("This keyword is reserved", 400);
     }
 
-    // Check if keyword is available (retry with random if auto-generated)
-    let existing = await Link.findOne({ keyword }).lean();
+    // Availability is per-domain: the same keyword may exist once on each. This
+    // pre-check is a convenience that gives a clean 409; the compound unique
+    // index below is the guard that actually holds under concurrency.
+    let existing = await Link.findOne({ domain: targetDomain, keyword }).lean();
     if (existing && customKeyword) {
       return apiError("Keyword already in use", 409);
     }
     while (existing) {
       keyword = generateKeyword();
-      existing = await Link.findOne({ keyword }).lean();
+      existing = await Link.findOne({ domain: targetDomain, keyword }).lean();
     }
 
     // Auto-fetch title if not provided
@@ -68,25 +96,46 @@ export async function POST(request: NextRequest) {
 
     const { iv: ipIv, ciphertext: ipRaw } = encryptIP(rawIp);
 
-    const link = await Link.create({
-      keyword,
-      url,
-      title: linkTitle,
-      ipRaw,
-      ipIv,
-      clicks: 0,
-      statusCode: 301,
-      owner: user?.id ?? null,
-      createdVia: "api",
-    });
+    let link;
+    try {
+      link = await Link.create({
+        domain: targetDomain,
+        keyword,
+        url,
+        title: linkTitle,
+        ipRaw,
+        ipIv,
+        clicks: 0,
+        statusCode: 301,
+        owner: user?.id ?? null,
+        createdVia: "api",
+      });
+    } catch (err) {
+      // Two requests raced the pre-check and the unique (domain, keyword) index
+      // rejected the loser. That is the authoritative answer, so report it as a
+      // conflict rather than a 500.
+      if (isDuplicateKeyError(err)) {
+        return apiError("Keyword already in use", 409);
+      }
+      throw err;
+    }
 
-    const shortUrl = `${process.env.AUTH_URL || "https://hmd.bio"}/${link.keyword}`;
+    // Best-effort counter for the dashboard. A failure here must never turn a
+    // successfully created link into an error response.
+    if (targetDomain !== PRIMARY_DOMAIN) {
+      Domain.updateOne({ hostname: targetDomain }, { $inc: { linkCount: 1 } })
+        .exec()
+        .catch((err: unknown) => {
+          captureError(err, { route: "api/v1/shorten", stage: "link-count" });
+        });
+    }
 
     return apiSuccess(
       {
         keyword: link.keyword,
+        domain: link.domain,
         url: link.url,
-        shortUrl,
+        shortUrl: buildShortUrl(link.domain, link.keyword),
         title: link.title,
         createdAt: link.createdAt,
       },
