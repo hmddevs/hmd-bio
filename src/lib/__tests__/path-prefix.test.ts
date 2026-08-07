@@ -6,6 +6,7 @@ import {
   stripPathPrefix,
 } from "../deeplink";
 import { deeplinkConfigSchema, editLinkSchema, shortenSchema } from "../validations";
+import { isReservedKeyword } from "../utils";
 import {
   BYPASS_PREFIXES,
   MATCHER_EXCLUDED_NAMES,
@@ -359,6 +360,91 @@ describe("keywords the middleware matcher would skip", () => {
   });
 });
 
+describe("isReservedKeyword", () => {
+  it("reserves every path the proxy hands to the app shell", () => {
+    // The assertion that would have caught the drift. `RESERVED_KEYWORDS` was a
+    // hand-maintained restatement and had already lost "dashboard", so
+    // `keyword: "dashboard"` was accepted and the link it created could never
+    // resolve: the proxy hands /dashboard to Next before any lookup happens.
+    for (const prefix of BYPASS_PREFIXES) {
+      expect(isReservedKeyword(prefix.slice(1)), prefix).toBe(true);
+    }
+  });
+
+  it("keeps the entries that are not bypass prefixes", () => {
+    // Derivation must not quietly drop these: "logout" is a route rather than a
+    // page, and the rest are served before the middleware runs.
+    for (const keyword of [
+      "logout",
+      "assets",
+      "favicon.ico",
+      "robots.txt",
+      "sitemap.xml",
+      "_next",
+    ]) {
+      expect(isReservedKeyword(keyword), keyword).toBe(true);
+    }
+  });
+
+  it("still lets an ordinary keyword through, in any case", () => {
+    expect(isReservedKeyword("DASHBOARD")).toBe(true);
+    expect(isReservedKeyword("dashboards")).toBe(false);
+    expect(isReservedKeyword("promo")).toBe(false);
+  });
+});
+
+/**
+ * The entries of `config.matcher` in src/proxy.ts, read out of the source.
+ *
+ * Reading the source rather than importing it is deliberate: importing the
+ * middleware would pull the edge runtime into the test for no benefit. The
+ * scan is a small parser rather than a pattern match because the assertion it
+ * feeds is "how many entries are there", and a shape-matching regex can only
+ * count the shapes it already knows about.
+ *
+ * Throws rather than returning an empty list on anything it does not
+ * understand. A guard that silently finds nothing is worse than no guard.
+ */
+function matcherArrayEntries(source: string): string[] {
+  // Comments go first: the array carries a long explanatory block comment, and
+  // neither a commented-out entry nor a comment mentioning one may be counted.
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^[ \t]*\/\/.*$/gm, "");
+
+  const open = code.indexOf("[", code.indexOf("matcher:"));
+  if (!code.includes("matcher:") || open === -1) {
+    throw new Error("src/proxy.ts declares no config.matcher array");
+  }
+
+  const entries: string[] = [];
+  let i = open + 1;
+  while (i < code.length) {
+    const char = code[i];
+    if (char === "]") return entries;
+    if (char === "," || /\s/.test(char)) {
+      i += 1;
+      continue;
+    }
+    if (char !== '"') {
+      // Turbopack parses this field statically and rejects anything that is not
+      // a string literal, so reaching here means either a broken build or a
+      // form this guard has not been taught to count. Either way, fail loudly.
+      throw new Error(`config.matcher holds a non-literal entry near: ${code.slice(i, i + 40)}`);
+    }
+    let end = i + 1;
+    while (end < code.length && code[end] !== '"') {
+      end += code[end] === "\\" ? 2 : 1;
+    }
+    if (end >= code.length) throw new Error("config.matcher has an unterminated string");
+    // JSON.parse, because the captured text is TypeScript source and its
+    // backslashes are still doubled.
+    entries.push(JSON.parse(code.slice(i, end + 1)) as string);
+    i = end + 1;
+  }
+  throw new Error("config.matcher array is not closed");
+}
+
 describe("buildMatcherPattern", () => {
   it("reproduces the shipped matcher literal, byte for byte", () => {
     // Pinned to the exact string in src/proxy.ts, so the generated form can
@@ -379,14 +465,49 @@ describe("buildMatcherPattern", () => {
       new URL("../../proxy.ts", import.meta.url),
       "utf8"
     );
-    // All occurrences, not the first. `config.matcher` is an array, so a second
-    // literal would widen what the middleware runs on while a first-match test
-    // stayed green. Exactly one is the invariant.
-    const literals = [...source.matchAll(/"(\/\(\(\?![^"]+)"/g)].map((m) => m[1]);
-    expect(literals, "src/proxy.ts must declare exactly one matcher literal").toHaveLength(1);
-    const literal = literals[0];
-    // The captured text is still TypeScript source, so its escapes are doubled.
-    expect(JSON.parse(`"${literal}"`)).toBe(buildMatcherPattern());
+    // Every entry of the array, not every literal that looks like a lookahead.
+    // Counting by shape (the old `/"(\/\(\(\?!...)"/g`) only recognised entries
+    // beginning `/((?!`, so a second entry of any other form, "/:path*" or a
+    // lookbehind, widened what the middleware runs on with this test still
+    // green. Parse the array instead and count what is actually in it.
+    const entries = matcherArrayEntries(source);
+    expect(entries, "src/proxy.ts must declare exactly one matcher entry").toHaveLength(1);
+    expect(entries[0]).toBe(buildMatcherPattern());
+  });
+
+  it("counts matcher entries of any shape, not only lookahead ones", () => {
+    // The guard on the guard. The previous count matched the literal's shape
+    // (`/((?!`), so a second entry written any other way was invisible to it
+    // and the middleware could be widened with the suite still green.
+    const withSecondEntry = `export const config = {
+  matcher: [
+    "/((?!_next).*)",
+    "/:path*",
+  ],
+};`;
+    expect(matcherArrayEntries(withSecondEntry)).toEqual(["/((?!_next).*)", "/:path*"]);
+  });
+
+  it("ignores a commented-out entry rather than counting it", () => {
+    const withComments = `export const config = {
+  matcher: [
+    /* Explains why, and mentions "/:path*" in passing. */
+    // "/:legacy*",
+    "/((?!_next).*)",
+  ],
+};`;
+    expect(matcherArrayEntries(withComments)).toEqual(["/((?!_next).*)"]);
+  });
+
+  it("throws on a matcher form it cannot account for", () => {
+    // Next also accepts object entries. Counting one as zero would be the same
+    // failure the shape-matching regex had, so this fails loudly instead.
+    const withObjectEntry = `export const config = {
+  matcher: [
+    { source: "/:path*" },
+  ],
+};`;
+    expect(() => matcherArrayEntries(withObjectEntry)).toThrow(/non-literal entry/);
   });
 
   it("skips exactly the paths the matcher is meant to skip", () => {

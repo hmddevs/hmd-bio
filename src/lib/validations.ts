@@ -11,6 +11,9 @@ import { APP_LINKS_MAXLENGTH, PATH_PREFIX_MAXLENGTH } from "@/models/Domain";
 // Derived, never restated: the proxy owns these paths, and a path prefix that
 // shadowed one would take the app shell away from a tenant's own visitors.
 import { isReservedPathPrefix, startsWithMatcherExcludedName } from "@/lib/reserved-paths";
+// One definition of "a protocol we are willing to redirect to", shared with the
+// public shorten route rather than restated for the sync webhook.
+import { isAllowedProtocol, isReservedKeyword } from "@/lib/utils";
 
 // --- Hostname primitives -------------------------------------------------
 // Defined first because the link schemas below carry a `domain` field.
@@ -169,15 +172,28 @@ const KEYWORD_RESERVED_MESSAGE =
 
 const isUsableKeyword = (value: string) => !startsWithMatcherExcludedName(value);
 
+/**
+ * The one definition of a caller-chosen keyword, shared by every writer.
+ *
+ * Previously restated per schema, and it had drifted: `bulkImportSchema`
+ * carried the regex and the reserved check but not `.min(2)`, so bulk import
+ * accepted a one-character keyword that `/api/v1/shorten` and the edit endpoint
+ * both refused. The rules are the same rules wherever a keyword is minted, so
+ * there is one copy of them.
+ *
+ * Exported because /api/internal/sync mints keywords too and must not become a
+ * fourth restatement.
+ */
+export const chosenKeywordSchema = z
+  .string()
+  .min(2, "Keyword must be at least 2 characters")
+  .max(100, "Keyword must be at most 100 characters")
+  .regex(/^[a-zA-Z0-9_-]+$/, "Only alphanumeric, hyphens, and underscores allowed")
+  .refine(isUsableKeyword, KEYWORD_RESERVED_MESSAGE);
+
 export const shortenSchema = z.object({
   url: z.string().url("Invalid URL"),
-  keyword: z
-    .string()
-    .min(2, "Keyword must be at least 2 characters")
-    .regex(/^[a-zA-Z0-9_-]*$/, "Only alphanumeric, hyphens, and underscores allowed")
-    .max(100)
-    .refine(isUsableKeyword, KEYWORD_RESERVED_MESSAGE)
-    .optional(),
+  keyword: chosenKeywordSchema.optional(),
   title: z.string().max(500).optional(),
   /**
    * The domain the link is created on. Absent means the primary domain, so an
@@ -204,13 +220,7 @@ export const editLinkSchema = z.object({
   domain: linkDomainField,
   url: z.string().url("Invalid URL").optional(),
   title: z.string().max(500).optional(),
-  keyword: z
-    .string()
-    .min(2, "Keyword must be at least 2 characters")
-    .regex(/^[a-zA-Z0-9_-]+$/)
-    .max(100)
-    .refine(isUsableKeyword, KEYWORD_RESERVED_MESSAGE)
-    .optional(),
+  keyword: chosenKeywordSchema.optional(),
   statusCode: z.coerce.string().pipe(z.enum(["301", "302"])).optional(),
   isPasswordProtected: z.boolean().optional(),
   password: z.string().min(1).max(200).optional(),
@@ -262,15 +272,16 @@ export const bulkImportSchema = z
   .array(
     z.object({
       url: z.string().url(),
-      keyword: z
-        .string()
-        .regex(/^[a-zA-Z0-9_-]*$/)
-        .max(100)
-        // The same reserved check the single-link schemas apply. Easy to miss
-        // here, and the worst place to miss it: this endpoint takes 500 items
-        // at a time, so one unguarded import mints the whole unmetered set.
-        .refine(isUsableKeyword, KEYWORD_RESERVED_MESSAGE)
-        .optional(),
+      // The same rules the single-link schemas apply, and the worst place to
+      // let them drift: this endpoint takes 500 items at a time, so one
+      // unguarded import mints the whole set.
+      //
+      // The empty string stays accepted, unlike on the single-link schemas.
+      // `bulk/route.ts` reads `item.keyword?.trim() || generateKeyword()`, so
+      // "" has always meant "generate one for me" here, and rejecting it would
+      // break a caller that sends the field for every row and leaves it blank
+      // where it wants a generated keyword.
+      keyword: chosenKeywordSchema.or(z.literal("")).optional(),
       title: z.string().max(500).optional(),
       // Per-item so a single import can span several of the caller's domains.
       // Omitted means the primary domain, matching the pre-custom-domain shape.
@@ -278,6 +289,111 @@ export const bulkImportSchema = z
     })
   )
   .max(500, "A bulk import can contain at most 500 links");
+
+// --- YOURLS sync webhook -------------------------------------------------
+// `/api/internal/sync` took its fields straight off the parsed JSON body with
+// no schema at all. Two distinct problems, both fixed here rather than in the
+// route so they can be tested without a database:
+//
+//  1. Operator injection. Every other keyword-taking route reads its keyword
+//     from a path or search parameter, which is always a string. This one reads
+//     it from a JSON body, so `{"$ne": null}` was a valid value and
+//     `Link.updateOne({ domain, keyword }, { $inc: { clicks: 1 } })` became a
+//     query that matched, and incremented, an arbitrary document. `z.string()`
+//     is the whole fix for that class, and it has to be applied to every field
+//     that reaches a query or a document, not only to `keyword`.
+//  2. Reserved keywords. The link event is an upsert, which makes it a writer,
+//     and it was the last writer that could still mint a keyword beginning with
+//     a matcher-excluded name. Such a link skips the middleware entirely.
+
+/**
+ * A keyword used only to look an existing link up, not to mint one.
+ *
+ * Deliberately looser than `chosenKeywordSchema`: the rows this addresses were
+ * created in YOURLS years ago, and a legacy keyword may well be a single
+ * character. Refusing to sync clicks for one would lose data, not prevent
+ * anything, since a lookup cannot create a link. The string type and the
+ * character class are what matter here, and they are what close the injection.
+ */
+const syncLookupKeyword = z
+  .string()
+  .min(1, "Keyword is required")
+  .max(100, "Keyword must be at most 100 characters")
+  .regex(/^[a-zA-Z0-9_-]+$/, "Only alphanumeric, hyphens, and underscores allowed");
+
+/**
+ * A timestamp as YOURLS sends it.
+ *
+ * Not `z.string().datetime()`: the plugin sends MySQL `DATETIME` text
+ * ("2024-01-02 03:04:05"), which is not ISO 8601 and which the previous
+ * `new Date(value)` accepted happily. Requiring ISO here would break the live
+ * sender to no benefit. What this does add is a validity check, so an
+ * unparsable value is a 400 rather than an Invalid Date reaching Mongoose and
+ * failing as a 500.
+ */
+const syncTimestamp = z
+  .string()
+  .max(64, "Timestamp is too long")
+  .transform((value, ctx) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      ctx.addIssue({ code: "custom", message: "Invalid timestamp" });
+      return z.NEVER;
+    }
+    return parsed;
+  });
+
+/**
+ * An IP literal, checked by shape only.
+ *
+ * It is encrypted immediately and never queried, so the character class is
+ * enough to stop an object, and a stricter parse would only risk rejecting an
+ * address form the legacy sender still emits.
+ */
+const syncIp = z
+  .string()
+  .max(45, "IP address is too long")
+  .regex(/^[0-9a-fA-F:.]+$/, "Invalid IP address");
+
+export const syncClickSchema = z.object({
+  keyword: syncLookupKeyword,
+  referrer: z.string().max(2048).optional(),
+  userAgent: z.string().max(1000).optional(),
+  ip: syncIp.optional(),
+  countryCode: z.string().regex(/^[A-Za-z]{2}$/, "Invalid country code").optional(),
+  clickTime: syncTimestamp.optional(),
+});
+
+export const syncLinkSchema = z.object({
+  // The mint path, so the full keyword rules apply. Both halves of them: the
+  // prefix check that `chosenKeywordSchema` carries, plus the exact-match
+  // reserved list, which the public writers apply in the route rather than the
+  // schema because there it depends on the target domain. Here it does not:
+  // every row this endpoint writes is pinned to the primary domain.
+  keyword: chosenKeywordSchema.refine(
+    (value) => !isReservedKeyword(value),
+    "Keyword is reserved by the platform"
+  ),
+  // Was stored entirely unchecked, which made this endpoint a way to write a
+  // `javascript:` redirect target into a link on the primary domain.
+  url: z
+    .string()
+    .min(1, "URL is required")
+    .max(2048, "URL is too long")
+    .refine((value) => isAllowedProtocol(value), "URL protocol not allowed"),
+  title: z.string().max(500).optional(),
+  ip: syncIp.optional(),
+  clicks: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  timestamp: syncTimestamp.optional(),
+});
+
+export const syncUpdateClicksSchema = z.object({
+  keyword: syncLookupKeyword,
+  // Required, unlike before. An `update_clicks` event carrying no count wrote
+  // `undefined` and reported success, which is a silent no-op rather than a
+  // meaningful request.
+  clicks: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+});
 
 export const apiKeySchema = z.object({
   label: z.string().min(1).max(100).default("Default"),
