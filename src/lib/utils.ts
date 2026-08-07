@@ -2,7 +2,7 @@ import { customAlphabet } from "nanoid";
 import { lookup as dnsLookup } from "dns/promises";
 import { isIP } from "net";
 import { timingSafeEqual } from "crypto";
-import { startsWithMatcherExcludedName } from "@/lib/reserved-paths";
+import { BYPASS_PREFIXES, startsWithMatcherExcludedName } from "@/lib/reserved-paths";
 
 /**
  * Constant-time string comparison, for comparing shared secrets against a
@@ -61,23 +61,28 @@ export function generateKeywordSuggestions(base: string, count = 5): string[] {
   return suggestions;
 }
 
-const RESERVED_KEYWORDS = new Set([
-  "admin",
-  "api",
-  "bookmarklet",
-  "login",
+/**
+ * Names a keyword on the primary domain may not take, matched exactly.
+ *
+ * Derived from `BYPASS_PREFIXES` rather than restated, because the restated
+ * copy had already drifted: "dashboard" was missing, so `POST /api/v1/shorten`
+ * accepted `keyword: "dashboard"` and minted a link the proxy then handed
+ * straight to Next, giving a permanently dead link and a squat on a platform
+ * path. Anything the proxy treats as app shell must be unavailable as a
+ * keyword, and the only way to guarantee that is to read the proxy's own list.
+ *
+ * The extra entries below are the ones that are not bypass prefixes: "logout"
+ * is a NextAuth route rather than a page, and the rest are matcher exclusions
+ * or static files served before the middleware ever runs.
+ *
+ * This set is exact-match only. The prefix half of the same problem (a keyword
+ * such as "iconoclast", which skips the middleware entirely) is enforced at the
+ * schema boundary by `startsWithMatcherExcludedName`.
+ */
+const RESERVED_KEYWORDS: ReadonlySet<string> = new Set([
+  ...BYPASS_PREFIXES.map((prefix) => prefix.replace(/^\//, "").toLowerCase()),
   "logout",
   "assets",
-  "preview",
-  "password",
-  "not-found",
-  "docs",
-  "stats",
-  "terms",
-  "privacy",
-  "cookies",
-  "aup",
-  "signup",
   "favicon.ico",
   "robots.txt",
   "sitemap.xml",
