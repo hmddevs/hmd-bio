@@ -1,6 +1,22 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Constructed on first use, not at module scope. Resend's constructor throws on
+// a missing or empty key, and Next evaluates this module while collecting page
+// data at build time, so an environment without RESEND_API_KEY (Preview, CI)
+// would fail the build rather than any email send. Sending still fails loudly
+// when the key is absent; only the timing moves.
+let resendClient: Resend | null = null;
+
+function getResend(): Resend {
+  if (!resendClient) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error("RESEND_API_KEY is not configured, cannot send email");
+    }
+    resendClient = new Resend(apiKey);
+  }
+  return resendClient;
+}
 
 const FROM_EMAIL = process.env.EMAIL_FROM || "HMD.bio <no-reply@hmd.bio>";
 const FALLBACK_FROM = "HMD.bio <onboarding@resend.dev>";
@@ -11,6 +27,7 @@ async function sendEmail(params: {
   html: string;
 }): Promise<boolean> {
   try {
+    const resend = getResend();
     const { error } = await resend.emails.send({
       from: FROM_EMAIL,
       ...params,
