@@ -116,12 +116,30 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
     return;
   }
 
-  const result = await collection(name).updateMany(filter, {
-    $set: { domain: PRIMARY_DOMAIN },
-  });
-  console.log(
-    `  ${name}: matched ${result.matchedCount}, modified ${result.modifiedCount} document(s).`
-  );
+  // Backfill in batches. A single updateMany over a large collection can exceed
+  // the driver's socketTimeoutMS (30s), which aborts the migration mid-step.
+  // Batching keeps every write well inside that window and makes a resumed run
+  // pick up exactly where an interrupted one stopped.
+  const BATCH_SIZE = 5000;
+  let modified = 0;
+
+  for (;;) {
+    const batch = await collection(name)
+      .find(filter, { projection: { _id: 1 } })
+      .limit(BATCH_SIZE)
+      .toArray();
+
+    if (batch.length === 0) break;
+
+    const result = await collection(name).updateMany(
+      { _id: { $in: batch.map((doc) => doc._id) } },
+      { $set: { domain: PRIMARY_DOMAIN } }
+    );
+    modified += result.modifiedCount;
+    console.log(`  ${name}: ${modified}/${pending} document(s) backfilled.`);
+  }
+
+  console.log(`  ${name}: backfill complete, ${modified} document(s) modified.`);
 }
 
 // ---------------------------------------------------------------------------
