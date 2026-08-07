@@ -38,10 +38,19 @@ export async function POST(request: NextRequest) {
 
     const { url, keyword: customKeyword, title, domain, turnstileToken } = parsed.data;
 
+    // Identity must be established before Turnstile is decided: an authenticated
+    // caller (session or API key) is already accountable for their requests, so
+    // only an anonymous caller needs the human-verification gate.
+    const user = await authenticateRequest(request);
+
     // Cloudflare Turnstile verification: rejects a missing/invalid token
     // whenever TURNSTILE_SECRET_KEY is configured, skips only in dev mode.
-    const turnstileRejection = await requireTurnstile(turnstileToken, request);
-    if (turnstileRejection) return turnstileRejection;
+    // Authenticated callers skip this entirely; anonymous callers are gated
+    // strictly on user === null, never on a client-supplied header or field.
+    if (!user) {
+      const turnstileRejection = await requireTurnstile(turnstileToken, request);
+      if (turnstileRejection) return turnstileRejection;
+    }
 
     // Protocol check
     if (!isAllowedProtocol(url)) {
@@ -51,12 +60,16 @@ export async function POST(request: NextRequest) {
     const rawIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
     const ipHash = hashIP(rawIp);
 
-    const rl = await rateLimit(`shorten:${ipHash}`, { tier: "public" });
+    // Anonymous callers share a per-IP bucket at the public rate. An
+    // authenticated caller gets their own bucket at the authenticated rate,
+    // matching every other /api/v1 route; keying them by IP would throttle a
+    // whole office or NAT down to one user's allowance.
+    const rl = user
+      ? await rateLimit(`shorten:user:${user.id}`, { tier: "authenticated" })
+      : await rateLimit(`shorten:${ipHash}`, { tier: "public" });
     if (!rl.allowed) {
       return apiError("Too many requests", 429);
     }
-
-    const user = await authenticateRequest(request);
 
     await connectDB();
 
