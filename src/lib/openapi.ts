@@ -1700,6 +1700,31 @@ export const openApiSpec = {
           "403": { $ref: "#/components/responses/AdminOnly" },
           "404": { $ref: "#/components/responses/NotFound" },
           "429": { $ref: "#/components/responses/RateLimited" },
+          "502": {
+            description:
+              "Vercel refused to detach one of the user's custom domains; deletion was aborted with no " +
+              "local changes made, and the admin can safely retry",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: {
+                  success: false,
+                  statusCode: 502,
+                  error:
+                    'Could not detach domain "links.example.com" from the platform. User deletion was aborted; retry once the domain can be detached.',
+                },
+              },
+            },
+          },
+          "503": {
+            description: "Domain management is temporarily unavailable (Vercel API error)",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiErrorEnvelope" },
+                example: { success: false, statusCode: 503, error: "Domain management is temporarily unavailable" },
+              },
+            },
+          },
           "500": { $ref: "#/components/responses/InternalError" },
         },
       },
