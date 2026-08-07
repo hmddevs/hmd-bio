@@ -20,6 +20,12 @@ always-current sources below rather than duplicating them.
   natural-language description when generating API calls.
 - [Interactive Swagger UI](https://hmd.bio/docs): human-browsable rendering
   of the same specification, useful for exploring endpoints interactively.
+- [Full API reference (plain text)](https://hmd.bio/llms-full.txt): the
+  complete inline expansion of the OpenAPI specification as a single
+  markdown document, generated at request time so it can never drift from
+  it — every endpoint, parameter, request/response schema, and error code
+  with all `$ref` pointers already resolved. Fetch this one file to get the
+  full contract without a second request.
 
 ## Authentication
 
@@ -74,6 +80,35 @@ Full request/response schemas for all of the above, plus auth (`/signup`,
 (`/auth/api-keys`), and admin-only endpoints (`/admin/users`,
 `/admin/clicks`) are in the OpenAPI specification linked above — this file
 intentionally does not restate schema details that would drift out of sync.
+
+## Custom domains
+
+Registered owners can point their own hostname at HMD.bio and create short
+links on it instead of `hmd.bio`. A domain must be claimed and DNS-verified
+before it can be used:
+
+- `GET /api/v1/domains` — list the caller's own claimed domains, including
+  each domain's live verification token. Requires auth.
+- `POST /api/v1/domains` — claim a hostname the caller owns. Starts the
+  domain in `pending_dns`. Capped per account (3 domains by default);
+  exceeding the cap returns `403`.
+- `GET /api/v1/domains/{hostname}` — fetch one of the caller's domains.
+  Requires auth and ownership.
+- `DELETE /api/v1/domains/{hostname}` — detach the hostname from the
+  platform and delete the domain record. Links already created on it are
+  kept, not deleted, but stop resolving; pass `?force=true` to remove a
+  domain that still has links attached.
+- `POST /api/v1/domains/{hostname}/verify` — check the DNS TXT record proving
+  ownership, attach the hostname at the platform, and poll briefly for
+  certificate issuance. Idempotent; rate-limited more strictly than the
+  general authenticated tier, since each call walks a DNS zone the caller
+  claims to own.
+
+Once a domain reaches `active` status, links can be created on it by passing
+`domain` (the bare hostname) to `POST /api/v1/shorten`, or per item to
+`POST /api/v1/links/bulk` so a single import can span several domains.
+Omitting `domain` on either endpoint always means the primary domain
+(`hmd.bio`).
 
 ## Project background
 
