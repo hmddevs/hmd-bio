@@ -1,9 +1,11 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { connectDB } from "@/lib/db";
-import { Link } from "@/models/Link";
+import { Link, LIVE_LINK_FILTER } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { encryptIP } from "@/lib/ip";
+import { PRIMARY_DOMAIN, domainFromHost } from "@/lib/domains";
+import { isDomainServable } from "@/lib/domain-cache";
 import { UAParser } from "ua-parser-js";
 
 /**
@@ -19,9 +21,22 @@ export default async function KeywordPage({
 }) {
   const { keyword } = await params;
 
+  // The host has to be read here too: when the middleware is bypassed, nothing
+  // upstream has scoped this lookup to a domain.
+  const requestHeaders = await headers();
+  const domain = domainFromHost(
+    requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host")
+  );
+
   await connectDB();
 
-  const link = await Link.findOne({ keyword }).lean();
+  if (domain !== PRIMARY_DOMAIN && !(await isDomainServable(domain))) {
+    notFound();
+  }
+
+  // Same detachment guard as /api/internal/resolve: this fallback must not be a
+  // way round it when the middleware is bypassed.
+  const link = await Link.findOne({ domain, keyword, ...LIVE_LINK_FILTER }).lean();
   if (!link) {
     notFound();
   }
@@ -34,7 +49,6 @@ export default async function KeywordPage({
     redirect(`/password/${keyword}`);
   }
 
-  const requestHeaders = await headers();
   const clientIP = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const userAgent = requestHeaders.get("user-agent") || "";
   const referrer = requestHeaders.get("referer") || "";
@@ -49,6 +63,7 @@ export default async function KeywordPage({
   // Fire-and-forget click logging — never block the redirect on it.
   Promise.all([
     Click.create({
+      domain,
       keyword,
       referrer,
       userAgent,
@@ -58,7 +73,7 @@ export default async function KeywordPage({
       browser,
       os,
     }),
-    Link.updateOne({ keyword }, { $inc: { clicks: 1 } }),
+    Link.updateOne({ domain, keyword, ...LIVE_LINK_FILTER }, { $inc: { clicks: 1 } }),
   ]).catch(() => {});
 
   redirect(link.url);

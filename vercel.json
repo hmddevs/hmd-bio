@@ -1,6 +1,12 @@
 {
   "framework": "nextjs",
   "regions": ["lhr1"],
+  "crons": [
+    {
+      "path": "/api/internal/domains/recheck",
+      "schedule": "0 4 * * *"
+    }
+  ],
   "redirects": [
     {
       "source": "/:path(.*)",

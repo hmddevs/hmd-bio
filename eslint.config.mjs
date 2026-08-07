@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build output from `vercel build`, which is generated, not authored.
+    ".vercel/**",
     // One-off ops scripts (excluded from tsc compilation too)
     "scripts/**",
   ]),

@@ -6,6 +6,8 @@ import { requireAuth, requireOwnership } from "@/lib/api-auth";
 import { hashIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
+import { domainFromQuery } from "@/lib/domain-access";
+import { buildShortUrl } from "@/lib/domains";
 import QRCode from "qrcode";
 
 export async function POST(
@@ -24,11 +26,13 @@ export async function POST(
   }
 
   const { keyword } = await params;
+  const domain = domainFromQuery(request);
+  if (!domain) return apiError("Invalid domain", 400);
 
   try {
     await connectDB();
 
-    const link = await Link.findOne({ keyword }).lean();
+    const link = await Link.findOne({ domain, keyword }).lean();
     if (!link) {
       return apiError("Link not found", 404);
     }
@@ -36,10 +40,11 @@ export async function POST(
     const forbidden = requireOwnership(link, session);
     if (forbidden) return forbidden;
 
-    const shortUrl = `${process.env.AUTH_URL || "https://hmd.bio"}/${keyword}`;
+    // The QR code must encode the link's own domain, not the platform's.
+    const shortUrl = buildShortUrl(link.domain, link.keyword);
     const svg = await QRCode.toString(shortUrl, { type: "svg", margin: 2 });
 
-    return apiSuccess({ keyword, shortUrl, svg });
+    return apiSuccess({ keyword, domain: link.domain, shortUrl, svg });
   } catch (err) {
     captureError(err, { route: "links/[keyword]/qr", keyword });
     return apiError("Internal server error", 500);

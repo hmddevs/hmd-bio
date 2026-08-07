@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Box,
   Typography,
@@ -70,6 +70,8 @@ interface LinkData {
   ogDescription: string;
   ogImage: string;
   createdAt: string;
+  domain: string;
+  shortUrl: string;
 }
 
 interface Stats {
@@ -98,8 +100,13 @@ type Period = "24h" | "7d" | "30d" | "all";
 export default function UserLinkDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const theme = useTheme();
   const keyword = params.keyword as string;
+  // The domain the link lives on. Absent from the URL means the primary
+  // domain, matching the API's own default, so links created before custom
+  // domains still open correctly with no query param at all.
+  const queryDomain = searchParams.get("domain") ?? "";
 
   const [link, setLink] = useState<LinkData | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -126,18 +133,20 @@ export default function UserLinkDetailPage() {
   });
   const [qrSvg, setQrSvg] = useState("");
 
-  const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://hmd.bio";
-  const shortUrl = `${baseUrl}/${keyword}`;
+  // Populated once the link loads; the shortUrl the API returns is always
+  // correct for the link's own domain, unlike a client-built origin.
+  const shortUrl = link?.shortUrl ?? "";
+  const domainQuery = queryDomain ? `?domain=${encodeURIComponent(queryDomain)}` : "";
 
   const loadStats = useCallback(async (p: Period) => {
-    const res = await fetch(`/api/v1/stats/${keyword}?period=${p}`);
+    const res = await fetch(`/api/v1/stats/${keyword}?period=${p}${queryDomain ? `&domain=${encodeURIComponent(queryDomain)}` : ""}`);
     const data = await res.json();
     if (data.success) setStats(data.data);
-  }, [keyword]);
+  }, [keyword, queryDomain]);
 
   useEffect(() => {
     async function loadLink() {
-      const res = await fetch(`/api/v1/links/${keyword}`);
+      const res = await fetch(`/api/v1/links/${keyword}${domainQuery}`);
       const data = await res.json();
       if (data.success) {
         setLink(data.data);
@@ -157,7 +166,7 @@ export default function UserLinkDetailPage() {
       }
     }
     loadLink();
-  }, [keyword, router]);
+  }, [keyword, queryDomain, domainQuery, router]);
 
   useEffect(() => {
     loadStats(period);
@@ -166,7 +175,7 @@ export default function UserLinkDetailPage() {
   const loadClicks = useCallback(async (pg: number) => {
     setClicksLoading(true);
     try {
-      const res = await fetch(`/api/v1/links/${keyword}/clicks?page=${pg + 1}&limit=25`);
+      const res = await fetch(`/api/v1/links/${keyword}/clicks?page=${pg + 1}&limit=25${queryDomain ? `&domain=${encodeURIComponent(queryDomain)}` : ""}`);
       const data = await res.json();
       if (data.success) {
         setClicksData(data.data.clicks);
@@ -175,7 +184,7 @@ export default function UserLinkDetailPage() {
     } catch { /* ignore */ } finally {
       setClicksLoading(false);
     }
-  }, [keyword]);
+  }, [keyword, queryDomain]);
 
   useEffect(() => {
     if (tab === 4) loadClicks(clicksPage);
@@ -200,7 +209,7 @@ export default function UserLinkDetailPage() {
     if (form.removePassword) body.removePassword = true;
     if (form.expiresAt) body.expiresAt = new Date(form.expiresAt).toISOString();
 
-    const res = await fetch(`/api/v1/links/${keyword}`, {
+    const res = await fetch(`/api/v1/links/${keyword}${domainQuery}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -211,7 +220,7 @@ export default function UserLinkDetailPage() {
       setEditOpen(false);
       // If keyword changed, redirect to the new page
       if (data.data.keyword !== keyword) {
-        router.replace(`/dashboard/links/${data.data.keyword}`);
+        router.replace(`/dashboard/links/${data.data.keyword}${domainQuery}`);
       }
     } else {
       setError(data.error || "Failed to save");
@@ -220,7 +229,7 @@ export default function UserLinkDetailPage() {
   }
 
   async function handleGenerateQr() {
-    const res = await fetch(`/api/v1/links/${keyword}/qr`, {
+    const res = await fetch(`/api/v1/links/${keyword}/qr${domainQuery}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -615,6 +624,9 @@ export default function UserLinkDetailPage() {
         <DialogContent dividers>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
             {error && <Alert severity="error">{error}</Alert>}
+            <Typography variant="body2" color="text.secondary">
+              Domain: <strong>{link.domain}</strong> — a link&apos;s domain cannot be changed after creation.
+            </Typography>
             <TextField label="Destination URL" type="url" fullWidth value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
             <TextField label="Title" fullWidth value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             <Grid container spacing={2}>

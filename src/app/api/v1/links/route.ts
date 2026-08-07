@@ -6,6 +6,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
+import { buildShortUrl } from "@/lib/domains";
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
       return apiError(parsed.error.issues[0].message, 400);
     }
 
-    const { page, limit, search, sort, order, dateFrom, dateTo, minClicks, maxClicks } =
+    const { domain, page, limit, search, sort, order, dateFrom, dateTo, minClicks, maxClicks } =
       parsed.data;
 
     await connectDB();
@@ -34,6 +35,16 @@ export async function GET(request: NextRequest) {
 
     if (session.user.role !== "admin") {
       filter.owner = session.user.id;
+    }
+
+    // Note the asymmetry with /api/v1/links/[keyword]: there, an absent
+    // `domain` defaults to the primary domain, because that route addresses one
+    // specific record and guessing which domain it meant would be wrong. Here,
+    // an absent `domain` lists across every domain the caller owns, which is
+    // what a dashboard needs. Ownership is already enforced by `filter.owner`,
+    // so the wider default leaks nothing.
+    if (domain) {
+      filter.domain = domain;
     }
 
     if (search) {
@@ -71,7 +82,12 @@ export async function GET(request: NextRequest) {
     ]);
 
     return apiSuccess({
-      links,
+      // `domain` is already on each document; `shortUrl` is added so a client
+      // never has to reconstruct the origin itself.
+      links: links.map((link) => ({
+        ...link,
+        shortUrl: buildShortUrl(link.domain, link.keyword),
+      })),
       pagination: {
         page,
         limit,
