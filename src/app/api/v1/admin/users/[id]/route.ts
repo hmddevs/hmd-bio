@@ -5,6 +5,7 @@ import { Link } from "@/models/Link";
 import { Domain } from "@/models/Domain";
 import { detachLinksForHostname } from "@/lib/domain-state";
 import { invalidateDomainStatus } from "@/lib/domain-cache";
+import { removeDomain, VercelDomainsError } from "@/lib/vercel-domains";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
@@ -12,6 +13,14 @@ import { captureError } from "@/lib/errors";
 import { sendApprovalEmail } from "@/lib/email";
 import { adminEditProfileSchema } from "@/lib/validations";
 import mongoose from "mongoose";
+
+// Deleting a user detaches each of their domains from Vercel one at a time,
+// and each call allows itself 10 seconds. A user holding several provisioned
+// domains against a slow Vercel API would otherwise exhaust the default
+// function budget and die mid-loop, which surfaces as a platform 504 rather
+// than the 502 this route raises deliberately. Local state is untouched either
+// way and a retry is idempotent, so this buys diagnosability, not correctness.
+export const maxDuration = 60;
 
 const VALID_ACTIONS = new Set([
   "approve",
@@ -152,7 +161,40 @@ export async function DELETE(
     // behind would keep the hostnames claimed by a user who no longer exists,
     // and leaving the links live would hand them to whoever claims the hostname
     // next, so each hostname is released and its links stamped as detached.
-    const domains = await Domain.find({ owner: target._id }).select("hostname").lean();
+    //
+    // Every Vercel detach must succeed BEFORE any local mutation runs. If one
+    // fails partway through, the domains already detached at Vercel cannot be
+    // undone, but the local records for those and every other domain, the
+    // links, and the user itself are all left untouched, so the admin can
+    // simply retry the deletion rather than having to reconcile a half-done
+    // state by hand.
+    const domains = await Domain.find({ owner: target._id })
+      .select("hostname vercelDomainId")
+      .lean();
+
+    for (const d of domains) {
+      // Only ever call Vercel for a domain this app actually attached, which
+      // is exactly the domains that reached provisioning and so carry a
+      // `vercelDomainId`. A `pending_dns` or `failed` record proves no
+      // ownership whatsoever: without this guard, an admin deleting a user
+      // could detach an unrelated hostname that happens to sit on the same
+      // Vercel project, taking that site offline.
+      if (!d.vercelDomainId) continue;
+
+      const removed = await removeDomain(d.hostname);
+      if (!removed.ok) {
+        captureError(new Error(`Vercel refused to remove domain: ${removed.code}`), {
+          route: "admin/users/[id]:DELETE",
+          vercelCode: removed.code,
+          hostname: d.hostname,
+        });
+        return apiError(
+          `Could not detach domain "${d.hostname}" from the platform. User deletion was aborted; retry once the domain can be detached.`,
+          502
+        );
+      }
+    }
+
     for (const d of domains) {
       await detachLinksForHostname(d.hostname);
       await invalidateDomainStatus(d.hostname);
@@ -169,6 +211,10 @@ export async function DELETE(
       domainsReleased: domains.length,
     });
   } catch (err) {
+    if (err instanceof VercelDomainsError) {
+      captureError(err, { route: "admin/users/[id]:DELETE", vercelCode: err.code });
+      return apiError("Domain management is temporarily unavailable", 503);
+    }
     captureError(err, { route: "admin/users/[id]:DELETE" });
     return apiError("Internal server error", 500);
   }
