@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { Link } from "@/models/Link";
+import { Domain } from "@/models/Domain";
+import { detachLinksForHostname } from "@/lib/domain-state";
+import { invalidateDomainStatus } from "@/lib/domain-cache";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
@@ -145,12 +148,26 @@ export async function DELETE(
       return apiError("Cannot delete your own account", 400);
     }
 
+    // Their custom domains go with the account. Leaving the Domain records
+    // behind would keep the hostnames claimed by a user who no longer exists,
+    // and leaving the links live would hand them to whoever claims the hostname
+    // next, so each hostname is released and its links stamped as detached.
+    const domains = await Domain.find({ owner: target._id }).select("hostname").lean();
+    for (const d of domains) {
+      await detachLinksForHostname(d.hostname);
+      await invalidateDomainStatus(d.hostname);
+    }
+    await Domain.deleteMany({ owner: target._id });
+
     // Unlink their links (set owner to null) rather than deleting them
     await Link.updateMany({ owner: target._id }, { $set: { owner: null } });
 
     await User.deleteOne({ _id: target._id });
 
-    return apiSuccess({ message: `User ${target.username} deleted` });
+    return apiSuccess({
+      message: `User ${target.username} deleted`,
+      domainsReleased: domains.length,
+    });
   } catch (err) {
     captureError(err, { route: "admin/users/[id]:DELETE" });
     return apiError("Internal server error", 500);

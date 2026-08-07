@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Link } from "@/models/Link";
+import { Link, LIVE_LINK_FILTER } from "@/models/Link";
 import { Click } from "@/models/Click";
 import { hashIP, encryptIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { timingSafeEqualStr } from "@/lib/utils";
+import { PRIMARY_DOMAIN, normaliseHost } from "@/lib/domains";
+import { isDomainServable } from "@/lib/domain-cache";
 import { UAParser } from "ua-parser-js";
 
 /**
@@ -29,6 +31,11 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "Missing keyword" }, { status: 400 });
   }
 
+  // The middleware always sends `domain`. An absent value falls back to the
+  // primary domain rather than querying by keyword alone, so a caller can never
+  // trigger an unscoped lookup by omitting the parameter.
+  const domain = normaliseHost(request.nextUrl.searchParams.get("domain") ?? "") || PRIMARY_DOMAIN;
+
   // Rate limit by IP: 120 requests per minute
   const clientIP = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const rl = await rateLimit(`resolve:${hashIP(clientIP)}`, { limit: 120, windowMs: 60_000 });
@@ -38,7 +45,19 @@ export async function GET(request: NextRequest) {
 
   await connectDB();
 
-  const link = await Link.findOne({ keyword }).lean();
+  // A custom domain only resolves while its Domain record is `active`. Anything
+  // pending, verifying, failed, or suspended returns 404 and never reveals that
+  // links exist behind it. Cached for 60s, degrading to MongoDB if Redis is down.
+  if (domain !== PRIMARY_DOMAIN) {
+    const servable = await isDomainServable(domain);
+    if (!servable) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+  }
+
+  // A link stamped with `domainDetachedAt` belonged to a previous owner of this
+  // hostname and must never resolve again.
+  const link = await Link.findOne({ domain, keyword, ...LIVE_LINK_FILTER }).lean();
   if (!link) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
@@ -65,6 +84,7 @@ export async function GET(request: NextRequest) {
 
     Promise.all([
       Click.create({
+        domain,
         keyword,
         referrer,
         userAgent,
@@ -74,12 +94,12 @@ export async function GET(request: NextRequest) {
         browser,
         os,
       }),
-      Link.updateOne({ keyword }, { $inc: { clicks: 1 } }),
+      Link.updateOne({ domain, keyword, ...LIVE_LINK_FILTER }, { $inc: { clicks: 1 } }),
     ]).catch((err) => {
-      captureError(err, { route: "internal/resolve", keyword });
+      captureError(err, { route: "internal/resolve", domain, keyword });
     });
   } catch (err) {
-    captureError(err, { route: "internal/resolve", keyword, stage: "click-log-setup" });
+    captureError(err, { route: "internal/resolve", domain, keyword, stage: "click-log-setup" });
   }
 
   return Response.json({

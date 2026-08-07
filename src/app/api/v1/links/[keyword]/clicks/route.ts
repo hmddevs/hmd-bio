@@ -7,6 +7,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth, requireOwnership } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
+import { domainFromQuery } from "@/lib/domain-access";
 
 const clicksQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -35,9 +36,12 @@ export async function GET(
     }
     const { page, limit } = parsed.data;
 
+    const domain = domainFromQuery(request);
+    if (!domain) return apiError("Invalid domain", 400);
+
     await connectDB();
 
-    const link = await Link.findOne({ keyword }).lean();
+    const link = await Link.findOne({ domain, keyword }).lean();
     if (!link) {
       return apiError("Link not found", 404);
     }
@@ -46,12 +50,12 @@ export async function GET(
     if (forbidden) return forbidden;
 
     const [clicks, total] = await Promise.all([
-      Click.find({ keyword })
+      Click.find({ domain, keyword })
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      Click.countDocuments({ keyword }),
+      Click.countDocuments({ domain, keyword }),
     ]);
 
     return apiSuccess({
