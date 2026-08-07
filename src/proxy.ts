@@ -81,25 +81,30 @@ function redirectToPrimary(request: NextRequest): NextResponse {
 /**
  * The origin every INTERNAL_SECRET-bearing fetch must be addressed to.
  *
- * Never `request.url`. On a custom domain the request's host is the *tenant's*
- * hostname, resolved by DNS the tenant controls: point the A record at your own
- * server, replay the request to Vercel with `Host: tenant.example`, and the edge
- * hands `x-internal-secret` straight to you. The origin therefore has to come
- * from something only the platform can set, which is VERCEL_URL (injected by
- * Vercel, not by the request) with the primary domain as the fallback.
+ * Never derived from the request, on any host. On a custom domain the request's
+ * host is the *tenant's* hostname, resolved by DNS the tenant controls: point
+ * the A record at your own server, replay the request to Vercel with
+ * `Host: tenant.example`, and the edge hands `x-internal-secret` straight to
+ * you. Gating that on `isPlatformHost` is not enough, because it is decided from
+ * the `x-forwarded-host`/`Host` header and returns true for an empty host and
+ * for every `*.vercel.app` name, a namespace Vercel allocates first-come to any
+ * customer. The origin is therefore chosen from a fixed allowlist only:
  *
- * Platform hosts are the one case that keeps using the request's own origin,
- * because that origin is already platform-controlled and because nothing else
- * works there: VERCEL_URL is unset under `pnpm dev`, and on a preview
- * deployment the deployment URL can sit behind Vercel's deployment protection
- * and 401 the internal call. The gate is `isPlatformHost`, never an arbitrary
- * request host.
+ *   1. VERCEL_URL, injected by Vercel into the runtime and not settable by a
+ *      request. Covers production and preview deployments.
+ *   2. A localhost origin, and only outside production, because `pnpm dev` has
+ *      no VERCEL_URL and must not send its internal calls to the live site.
+ *      A dev server on a non-default port needs PORT set for this to resolve.
+ *   3. The primary domain, which is a build-time constant.
  */
-function internalOrigin(request: NextRequest, host: string): string {
-  if (isPlatformHost(host)) return request.url;
-
+function internalOrigin(): string {
   const vercelHost = process.env.VERCEL_URL?.trim();
   if (vercelHost) return `https://${vercelHost}`;
+
+  if (process.env.NODE_ENV !== "production") {
+    return `http://127.0.0.1:${process.env.PORT?.trim() || "3000"}`;
+  }
+
   return `https://${PRIMARY_DOMAIN}`;
 }
 
@@ -150,7 +155,7 @@ export async function proxy(request: NextRequest) {
 
   // Origin for every internal call made below. Derived from the platform, not
   // from the request: see internalOrigin.
-  const internalBase = internalOrigin(request, host);
+  const internalBase = internalOrigin();
 
   // Deeplink configuration for this hostname, fetched at most once per request
   // and only by the branches below that genuinely need it. An ordinary

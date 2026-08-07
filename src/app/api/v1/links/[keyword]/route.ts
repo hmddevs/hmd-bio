@@ -109,6 +109,11 @@ export async function PUT(
     if (parsed.data.ogTitle !== undefined) updates.ogTitle = parsed.data.ogTitle;
     if (parsed.data.ogDescription !== undefined) updates.ogDescription = parsed.data.ogDescription;
     if (parsed.data.ogImage !== undefined) updates.ogImage = parsed.data.ogImage;
+    // Absent means unchanged; an empty array clears every platform override and
+    // sends the link back to resolving through `url` alone.
+    if (parsed.data.targets !== undefined) updates.targets = parsed.data.targets;
+    if (parsed.data.forwardPath !== undefined) updates.forwardPath = parsed.data.forwardPath;
+    if (parsed.data.forwardQuery !== undefined) updates.forwardQuery = parsed.data.forwardQuery;
 
     // Handle keyword change
     if (parsed.data.keyword && parsed.data.keyword !== keyword) {

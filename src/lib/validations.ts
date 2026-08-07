@@ -5,6 +5,9 @@ import {
   PRIMARY_DOMAIN,
   PUBLIC_SUFFIXES,
 } from "@/lib/domains";
+// Imported rather than restated: the API cap and the schema's `maxlength` must
+// never drift, or a body that validates here fails at the database instead.
+import { APP_LINKS_MAXLENGTH } from "@/models/Domain";
 
 // --- Hostname primitives -------------------------------------------------
 // Defined first because the link schemas below carry a `domain` field.
@@ -65,6 +68,82 @@ export const hostnameSyntaxSchema = z
  */
 const linkDomainField = hostnameSyntaxSchema.default(PRIMARY_DOMAIN);
 
+// --- Deeplink primitives -------------------------------------------------
+// Shared by the link payloads below and by `deeplinkConfigSchema` further
+// down; declared here because `shortenSchema` carries `targets`.
+
+/**
+ * An absolute http(s) URL the platform is willing to redirect a visitor to.
+ *
+ * Write-time scheme validation is the primary open-redirect guard for every
+ * target introduced by deeplinks. `parseHttpUrl` in `@/lib/deeplink` re-checks
+ * on read, but that is a backstop for rows written before this existed, not the
+ * control: a `javascript:` or `data:` value must never reach the database in
+ * the first place. Userinfo is rejected on top of the scheme check because
+ * "https://trusted.example@evil.example" reads as the trusted host to a person
+ * and resolves to the attacker's.
+ *
+ * The schema deliberately outputs the *parsed* URL rather than the raw input.
+ * WHATWG parsing strips every tab, CR and LF anywhere in the string before it
+ * looks at the host, so validating the parse while storing the original lets
+ * the two disagree: "https://good.com<TAB>.evil.com/" validates as one host and
+ * would be stored, displayed on the dashboard and shown in the public
+ * /stats/{keyword}+ preview as another. Normalising here is the only place that
+ * guarantees what a reviewer reads is what a visitor resolves.
+ */
+const absoluteHttpUrl = z
+  .string()
+  .min(1, "URL is required")
+  .max(2048, "URL is too long")
+  .transform((value, ctx) => {
+    const fail = (message: string) => {
+      ctx.addIssue({ code: "custom", message });
+      return z.NEVER;
+    };
+
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return fail("Enter an absolute URL, including https://");
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return fail("Only http and https URLs are allowed");
+    }
+    if (url.username || url.password) {
+      return fail("A URL must not contain credentials");
+    }
+    return url.toString();
+  });
+
+/**
+ * Per-platform overrides. Capped at three because there are exactly three
+ * platform buckets (`platformFromUA`), and duplicates are rejected rather than
+ * last-one-wins: two entries for the same platform have no defined meaning and
+ * would make the resolved target depend on array order.
+ */
+const linkTargetsField = z
+  .array(
+    z.object({
+      platform: z.enum(["ios", "android", "desktop"]),
+      url: absoluteHttpUrl,
+    })
+  )
+  .max(3, "At most three platform targets are allowed")
+  .superRefine((targets, ctx) => {
+    const seen = new Set<string>();
+    for (const target of targets) {
+      if (seen.has(target.platform)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Duplicate target for platform "${target.platform}"`,
+        });
+        return;
+      }
+      seen.add(target.platform);
+    }
+  });
+
 export const shortenSchema = z.object({
   url: z.string().url("Invalid URL"),
   keyword: z
@@ -80,6 +159,13 @@ export const shortenSchema = z.object({
    * Validated as a hostname, never accepted as a free-form string.
    */
   domain: linkDomainField,
+  /**
+   * Deeplink fields. All optional, and all inert when omitted: a link created
+   * without them resolves through `url` exactly as every existing link does.
+   */
+  targets: linkTargetsField.optional(),
+  forwardPath: z.boolean().optional(),
+  forwardQuery: z.boolean().optional(),
   turnstileToken: z.string().optional(),
 });
 
@@ -106,6 +192,14 @@ export const editLinkSchema = z.object({
   ogTitle: z.string().max(200).nullable().optional(),
   ogDescription: z.string().max(500).nullable().optional(),
   ogImage: z.string().url().nullable().optional(),
+  /**
+   * Absent leaves the stored value alone; an empty array clears every override
+   * and returns the link to resolving through `url` alone. There is no partial
+   * update of a single platform, so the client always sends the whole set.
+   */
+  targets: linkTargetsField.optional(),
+  forwardPath: z.boolean().optional(),
+  forwardQuery: z.boolean().optional(),
 });
 
 export const linksQuerySchema = z.object({
@@ -211,6 +305,127 @@ export const hostnameSchema = hostnameSyntaxSchema.superRefine((value, ctx) => {
 
 export const domainSchema = z.object({
   hostname: hostnameSchema,
+});
+
+// --- Deeplink configuration ---------------------------------------------
+
+/** UTF-8 size of a string, which is what actually goes over the wire. */
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+/**
+ * Rejects characters that cannot survive being served as `application/json`.
+ *
+ * Two classes matter. An unpaired surrogate has no UTF-8 encoding at all, so
+ * the runtime substitutes U+FFFD and the bytes Apple or Google fetch are not
+ * the bytes the customer saved. A raw control character is not legal inside a
+ * JSON string and, since the file is served verbatim rather than re-serialised,
+ * nothing downstream would escape it for us. Tab, newline and carriage return
+ * are allowed because they are ordinary whitespace between tokens.
+ */
+function hasUnserialisableChars(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+
+    if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) return true;
+
+    // High surrogate: must be followed by a low surrogate.
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(i + 1);
+      if (Number.isNaN(next) || next < 0xdc00 || next > 0xdfff) return true;
+      i++;
+      continue;
+    }
+    // Low surrogate reached without a high one in front of it.
+    if (code >= 0xdc00 && code <= 0xdfff) return true;
+  }
+  return false;
+}
+
+/**
+ * Shared checks for both association files: they are stored and served as the
+ * exact bytes supplied, so everything that could make those bytes unusable has
+ * to be caught here. Deliberately validates the string and never re-serialises
+ * it; `JSON.parse` then `JSON.stringify` reorders keys, and Apple's CDN caches
+ * whatever it first served.
+ */
+function refineAssociationFile(
+  value: string,
+  ctx: z.RefinementCtx,
+  kind: "aasa" | "assetlinks"
+): void {
+  const fail = (message: string) => ctx.addIssue({ code: "custom", message });
+
+  if (byteLength(value) > APP_LINKS_MAXLENGTH) {
+    return fail(`The file must be at most ${APP_LINKS_MAXLENGTH / 1024} KB`);
+  }
+  if (hasUnserialisableChars(value)) {
+    return fail("The file contains characters that cannot be served as JSON");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return fail("The file must be valid JSON");
+  }
+
+  // The two formats differ at the top level, so they cannot share one check:
+  // apple-app-site-association is a JSON object, while assetlinks.json is a
+  // JSON array of statement objects. A bare string or number parses fine and is
+  // never a valid association file either way.
+  if (kind === "aasa") {
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return fail("apple-app-site-association must be a JSON object");
+    }
+    // Structural sanity only. Apple keeps adding keys, so this asks for one
+    // recognised section rather than validating the whole document: a stricter
+    // check would reject a valid file the day Apple ships a new format.
+    const keys = Object.keys(parsed as Record<string, unknown>);
+    if (!keys.some((key) => key === "applinks" || key === "webcredentials" || key === "appclips")) {
+      return fail(
+        "apple-app-site-association must contain at least one of 'applinks', 'webcredentials', or 'appclips'"
+      );
+    }
+    return;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return fail("assetlinks.json must be a JSON array of statements");
+  }
+  if (
+    !parsed.every((entry) => typeof entry === "object" && entry !== null && !Array.isArray(entry))
+  ) {
+    return fail("Every entry in assetlinks.json must be a JSON object");
+  }
+}
+
+/**
+ * PATCH body for a domain's deeplink configuration.
+ *
+ * Every field is optional and absence means "leave unchanged", so a partial
+ * update is the normal case and an empty body is a no-op rather than a reset.
+ * Explicit null clears a value; that distinction is the whole reason the
+ * nullable fields are `.nullable().optional()` rather than one or the other.
+ */
+export const deeplinkConfigSchema = z.object({
+  mode: z.enum(["shortener", "deeplink"]).optional(),
+  appLinks: z
+    .object({
+      aasa: z
+        .string()
+        .superRefine((value, ctx) => refineAssociationFile(value, ctx, "aasa"))
+        .nullable()
+        .optional(),
+      assetlinks: z
+        .string()
+        .superRefine((value, ctx) => refineAssociationFile(value, ctx, "assetlinks"))
+        .nullable()
+        .optional(),
+    })
+    .optional(),
+  fallbackTarget: absoluteHttpUrl.nullable().optional(),
 });
 
 /** Optional `?domain=` filter. Accepts the primary domain as well as custom ones. */
