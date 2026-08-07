@@ -14,6 +14,14 @@ import { sendApprovalEmail } from "@/lib/email";
 import { adminEditProfileSchema } from "@/lib/validations";
 import mongoose from "mongoose";
 
+// Deleting a user detaches each of their domains from Vercel one at a time,
+// and each call allows itself 10 seconds. A user holding several provisioned
+// domains against a slow Vercel API would otherwise exhaust the default
+// function budget and die mid-loop, which surfaces as a platform 504 rather
+// than the 502 this route raises deliberately. Local state is untouched either
+// way and a retry is idempotent, so this buys diagnosability, not correctness.
+export const maxDuration = 60;
+
 const VALID_ACTIONS = new Set([
   "approve",
   "disable",
