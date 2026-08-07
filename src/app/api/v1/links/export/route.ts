@@ -15,6 +15,7 @@ function csvField(value: string): string {
 }
 
 function csvRow(l: {
+  domain: string;
   keyword: string;
   url: string;
   title?: string;
@@ -22,7 +23,7 @@ function csvRow(l: {
   statusCode: number;
   createdAt: Date;
 }): string {
-  return `${csvField(l.keyword)},${csvField(l.url)},${csvField(l.title || "")},${l.clicks},${l.statusCode},${l.createdAt.toISOString()}\n`;
+  return `${csvField(l.domain)},${csvField(l.keyword)},${csvField(l.url)},${csvField(l.title || "")},${l.clicks},${l.statusCode},${l.createdAt.toISOString()}\n`;
 }
 
 export async function GET(request: NextRequest) {
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
-        controller.enqueue(encoder.encode("keyword,url,title,clicks,statusCode,createdAt\n"));
+        controller.enqueue(encoder.encode("domain,keyword,url,title,clicks,statusCode,createdAt\n"));
 
         const cursor = Link.find(filter).sort({ createdAt: -1 }).lean().cursor();
         try {

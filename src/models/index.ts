@@ -1,5 +1,7 @@
 export { Link } from "./Link";
 export type { ILink } from "./Link";
+export { Domain } from "./Domain";
+export type { IDomain, DomainStatus } from "./Domain";
 export { Click } from "./Click";
 export type { IClick } from "./Click";
 export { Option } from "./Option";

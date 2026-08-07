@@ -8,6 +8,8 @@ import { requireAuth, requireOwnership } from "@/lib/api-auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { isReservedKeyword } from "@/lib/utils";
+import { domainFromQuery } from "@/lib/domain-access";
+import { PRIMARY_DOMAIN, buildShortUrl } from "@/lib/domains";
 import bcrypt from "bcryptjs";
 
 export async function GET(
@@ -24,9 +26,14 @@ export async function GET(
   }
 
   const { keyword } = await params;
+  const domain = domainFromQuery(request);
+  if (!domain) return apiError("Invalid domain", 400);
+
   await connectDB();
 
-  const link = await Link.findOne({ keyword }).select("-password -ipRaw -ipIv").lean();
+  const link = await Link.findOne({ domain, keyword })
+    .select("-password -ipRaw -ipIv")
+    .lean();
   if (!link) {
     return apiError("Link not found", 404);
   }
@@ -34,7 +41,7 @@ export async function GET(
   const forbidden = requireOwnership(link, session);
   if (forbidden) return forbidden;
 
-  return apiSuccess(link);
+  return apiSuccess({ ...link, shortUrl: buildShortUrl(link.domain, link.keyword) });
 }
 
 export async function PUT(
@@ -58,9 +65,20 @@ export async function PUT(
       return apiError(parsed.error.issues[0].message, 400);
     }
 
+    // `?domain=` wins when present; otherwise the body's `domain` selector is
+    // used. Both default to the primary domain, so a client that sends neither
+    // behaves exactly as before.
+    const queryDomain = request.nextUrl.searchParams.get("domain") === null
+      ? null
+      : domainFromQuery(request);
+    if (request.nextUrl.searchParams.get("domain") !== null && !queryDomain) {
+      return apiError("Invalid domain", 400);
+    }
+    const domain = queryDomain ?? parsed.data.domain;
+
     await connectDB();
 
-    const existing = await Link.findOne({ keyword });
+    const existing = await Link.findOne({ domain, keyword });
     if (!existing) {
       return apiError("Link not found", 404);
     }
@@ -95,23 +113,40 @@ export async function PUT(
     // Handle keyword change
     if (parsed.data.keyword && parsed.data.keyword !== keyword) {
       const newKeyword = parsed.data.keyword;
-      if (isReservedKeyword(newKeyword)) {
+      // Reserved keywords only shadow the platform's own routes, which exist on
+      // the primary domain only.
+      if (domain === PRIMARY_DOMAIN && isReservedKeyword(newKeyword)) {
         return apiError("This keyword is reserved", 400);
       }
-      const conflict = await Link.findOne({ keyword: newKeyword });
+      const conflict = await Link.findOne({ domain, keyword: newKeyword });
       if (conflict) {
         return apiError("New keyword already in use", 409);
       }
       updates.keyword = newKeyword;
-      // Update click references
-      await Click.updateMany({ keyword }, { keyword: newKeyword });
+      // Update click references, scoped to this domain so another tenant's
+      // clicks on the same keyword are untouched.
+      await Click.updateMany({ domain, keyword }, { keyword: newKeyword });
     }
 
-    const updated = await Link.findOneAndUpdate({ keyword }, { $set: updates }, { new: true })
-      .select("-password -ipRaw -ipIv")
-      .lean();
+    let updated;
+    try {
+      updated = await Link.findOneAndUpdate({ domain, keyword }, { $set: updates }, { new: true })
+        .select("-password -ipRaw -ipIv")
+        .lean();
+    } catch (err) {
+      // A concurrent create can win the (domain, keyword) index between the
+      // conflict check and the rename.
+      if (typeof err === "object" && err !== null && (err as { code?: number }).code === 11000) {
+        return apiError("New keyword already in use", 409);
+      }
+      throw err;
+    }
 
-    return apiSuccess(updated);
+    if (!updated) {
+      return apiError("Link not found", 404);
+    }
+
+    return apiSuccess({ ...updated, shortUrl: buildShortUrl(updated.domain, updated.keyword) });
   } catch (err) {
     captureError(err, { route: "links/[keyword]", method: "PUT" });
     return apiError("Internal server error", 500);
@@ -132,9 +167,12 @@ export async function DELETE(
   }
 
   const { keyword } = await params;
+  const domain = domainFromQuery(request);
+  if (!domain) return apiError("Invalid domain", 400);
+
   await connectDB();
 
-  const existing = await Link.findOne({ keyword });
+  const existing = await Link.findOne({ domain, keyword });
   if (!existing) {
     return apiError("Link not found", 404);
   }
@@ -142,10 +180,10 @@ export async function DELETE(
   const forbidden = requireOwnership(existing, session);
   if (forbidden) return forbidden;
 
-  await Link.deleteOne({ keyword });
+  await Link.deleteOne({ domain, keyword });
 
-  // Also remove click logs
-  await Click.deleteMany({ keyword });
+  // Also remove click logs, scoped to the same domain.
+  await Click.deleteMany({ domain, keyword });
 
-  return apiSuccess({ deleted: keyword });
+  return apiSuccess({ deleted: keyword, domain });
 }

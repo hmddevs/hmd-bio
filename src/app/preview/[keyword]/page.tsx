@@ -1,24 +1,37 @@
+import { headers } from "next/headers";
 import { connectDB } from "@/lib/db";
-import { Link } from "@/models/Link";
+import { Link, LIVE_LINK_FILTER } from "@/models/Link";
 import { notFound } from "next/navigation";
+import { buildShortUrl, domainFromHost } from "@/lib/domains";
 import type { Metadata } from "next";
 
 interface Props {
   params: Promise<{ keyword: string }>;
 }
 
+/** The domain this preview is being served on. */
+async function requestDomain(): Promise<string> {
+  const requestHeaders = await headers();
+  return domainFromHost(
+    requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host")
+  );
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { keyword } = await params;
+  const domain = await requestDomain();
   await connectDB();
-  const link = await Link.findOne({ keyword }).lean();
+  const link = await Link.findOne({ domain, keyword, ...LIVE_LINK_FILTER }).lean();
   if (!link) return { title: "Not Found" };
+
+  const shortUrl = buildShortUrl(link.domain, link.keyword);
 
   return {
     title: `Preview: ${link.title || link.keyword} — HMD.bio`,
-    description: `This short URL (hmd.bio/${link.keyword}) redirects to: ${link.url}`,
+    description: `This short URL (${shortUrl}) redirects to: ${link.url}`,
     robots: link.isPasswordProtected ? { index: false, follow: false } : { index: true, follow: true },
     openGraph: {
-      title: link.ogTitle || link.title || `hmd.bio/${link.keyword}`,
+      title: link.ogTitle || link.title || shortUrl,
       description: link.ogDescription || `Redirects to: ${link.url}`,
       ...(link.ogImage ? { images: [link.ogImage] } : {}),
     },
@@ -27,12 +40,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function PreviewPage({ params }: Props) {
   const { keyword } = await params;
+  const domain = await requestDomain();
   await connectDB();
 
-  const link = await Link.findOne({ keyword }).lean();
+  const link = await Link.findOne({ domain, keyword, ...LIVE_LINK_FILTER }).lean();
   if (!link) notFound();
 
-  const shortUrl = `${process.env.AUTH_URL || "https://hmd.bio"}/${link.keyword}`;
+  const shortUrl = buildShortUrl(link.domain, link.keyword);
 
   return (
     <main id="main-content" className="flex-1 flex items-center justify-center px-4 py-16">

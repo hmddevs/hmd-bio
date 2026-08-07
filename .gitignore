@@ -45,3 +45,6 @@ next-env.d.ts
 .env.local
 .env*.local
 package-lock.json
+
+# Internal working memory, not part of the public project
+MEMORY.md

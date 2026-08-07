@@ -38,6 +38,8 @@ interface LinkItem {
   title?: string;
   clicks: number;
   createdAt: string;
+  domain: string;
+  shortUrl: string;
 }
 
 type SortField = "keyword" | "url" | "clicks" | "createdAt";
@@ -50,10 +52,8 @@ export default function MyLinksPage() {
   const [sort, setSort] = useState<SortField>("createdAt");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, totalPages: 0 });
-  const [deleteKeyword, setDeleteKeyword] = useState<string | null>(null);
+  const [deleteLink, setDeleteLink] = useState<LinkItem | null>(null);
   const [deleteError, setDeleteError] = useState("");
-
-  const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://hmd.bio";
 
   const fetchLinks = useCallback(async () => {
     setLoading(true);
@@ -92,24 +92,27 @@ export default function MyLinksPage() {
   };
 
   const handleDelete = async () => {
-    if (!deleteKeyword) return;
+    if (!deleteLink) return;
     setDeleteError("");
     try {
-      const res = await fetch(`/api/v1/links/${deleteKeyword}`, { method: "DELETE" });
+      const res = await fetch(
+        `/api/v1/links/${deleteLink.keyword}?domain=${encodeURIComponent(deleteLink.domain)}`,
+        { method: "DELETE" }
+      );
       if (!res.ok) {
         const json = await res.json().catch(() => null);
         setDeleteError(json?.error || "Failed to delete link");
         return;
       }
-      setDeleteKeyword(null);
+      setDeleteLink(null);
       fetchLinks();
     } catch {
       setDeleteError("Network error. Please try again.");
     }
   };
 
-  const copyToClipboard = (keyword: string) => {
-    navigator.clipboard.writeText(`${baseUrl}/${keyword}`);
+  const copyToClipboard = (shortUrl: string) => {
+    navigator.clipboard.writeText(shortUrl);
   };
 
   const from = (pagination.page - 1) * pagination.limit + 1;
@@ -201,11 +204,11 @@ export default function MyLinksPage() {
                     key={link._id}
                     hover
                     sx={{ cursor: "pointer" }}
-                    onClick={() => router.push(`/dashboard/links/${link.keyword}`)}
+                    onClick={() => router.push(`/dashboard/links/${link.keyword}?domain=${encodeURIComponent(link.domain)}`)}
                   >
                     <TableCell>
                       <Typography variant="body2" fontWeight={500} color="primary.main">
-                        {baseUrl}/{link.keyword}
+                        {link.shortUrl}
                       </Typography>
                     </TableCell>
                     <TableCell sx={{ maxWidth: 300 }}>
@@ -228,7 +231,7 @@ export default function MyLinksPage() {
                     </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
                       <Tooltip title="Copy short URL">
-                        <IconButton size="small" onClick={() => copyToClipboard(link.keyword)}>
+                        <IconButton size="small" aria-label={`Copy short URL for ${link.keyword}`} onClick={() => copyToClipboard(link.shortUrl)}>
                           <ContentCopyIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -236,9 +239,10 @@ export default function MyLinksPage() {
                         <IconButton
                           size="small"
                           color="error"
+                          aria-label={`Delete ${link.keyword}`}
                           onClick={() => {
                             setDeleteError("");
-                            setDeleteKeyword(link.keyword);
+                            setDeleteLink(link);
                           }}
                         >
                           <DeleteIcon fontSize="small" />
@@ -263,16 +267,16 @@ export default function MyLinksPage() {
       </Card>
 
       <Dialog
-        open={!!deleteKeyword}
+        open={!!deleteLink}
         onClose={() => {
-          setDeleteKeyword(null);
+          setDeleteLink(null);
           setDeleteError("");
         }}
       >
         <DialogTitle>Delete Link</DialogTitle>
         <DialogContent>
           <Typography>
-            Delete <strong>{baseUrl}/{deleteKeyword}</strong>? This cannot be undone.
+            Delete <strong>{deleteLink?.shortUrl}</strong>? This cannot be undone.
           </Typography>
           {deleteError && (
             <Alert severity="error" sx={{ mt: 2 }}>
@@ -283,7 +287,7 @@ export default function MyLinksPage() {
         <DialogActions>
           <Button
             onClick={() => {
-              setDeleteKeyword(null);
+              setDeleteLink(null);
               setDeleteError("");
             }}
           >

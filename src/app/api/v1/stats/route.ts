@@ -5,6 +5,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { hashIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
+import { PRIMARY_DOMAIN } from "@/lib/domains";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,9 +18,15 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
+    // Public, unauthenticated counters, so they cover the platform's own domain
+    // only. An unscoped count would publish every tenant's link and click
+    // volume on a custom domain to anyone who asks.
     const [totalLinks, totalClicksAgg] = await Promise.all([
-      Link.countDocuments(),
-      Link.aggregate([{ $group: { _id: null, total: { $sum: "$clicks" } } }]),
+      Link.countDocuments({ domain: PRIMARY_DOMAIN }),
+      Link.aggregate([
+        { $match: { domain: PRIMARY_DOMAIN } },
+        { $group: { _id: null, total: { $sum: "$clicks" } } },
+      ]),
     ]);
 
     const totalClicks = totalClicksAgg[0]?.total ?? 0;

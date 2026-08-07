@@ -19,7 +19,8 @@
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import type { Redis } from "@upstash/redis";
+import { getRedis } from "@/lib/redis";
 import { captureError } from "@/lib/errors";
 
 export type RateLimitTier = "public" | "authenticated";
@@ -57,15 +58,8 @@ function resolveConfig(options: RateLimitOptions): { limit: number; windowMs: nu
 
 // --- Upstash-backed path ------------------------------------------------
 
-let redisClient: Redis | null | undefined; // undefined = not yet resolved
-
-function getRedis(): Redis | null {
-  if (redisClient !== undefined) return redisClient;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  redisClient = url && token ? new Redis({ url, token }) : null;
-  return redisClient;
-}
+// The Upstash client itself lives in `@/lib/redis`, shared with the
+// domain-status cache so there is one connection policy for the whole app.
 
 // One Ratelimit instance per distinct (limit, window) pair, reused across calls.
 const limiterCache = new Map<string, Ratelimit>();

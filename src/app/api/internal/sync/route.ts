@@ -6,6 +6,7 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { encryptIP } from "@/lib/ip";
 import { captureError } from "@/lib/errors";
 import { timingSafeEqualStr } from "@/lib/utils";
+import { PRIMARY_DOMAIN } from "@/lib/domains";
 import { UAParser } from "ua-parser-js";
 
 /**
@@ -14,6 +15,10 @@ import { UAParser } from "ua-parser-js";
  *
  * Headers:  x-sync-secret — shared secret for authentication
  * Body:     { event: "click" | "link", data: { ... } }
+ *
+ * YOURLS only ever served the primary domain, so every query here is pinned to
+ * PRIMARY_DOMAIN explicitly. It must never be able to reach a tenant's link
+ * that happens to share a keyword.
  */
 export async function POST(request: NextRequest) {
   const secret = process.env.SYNC_SECRET;
@@ -61,6 +66,7 @@ export async function POST(request: NextRequest) {
 
       await Promise.all([
         Click.create({
+          domain: PRIMARY_DOMAIN,
           keyword,
           referrer: referrer || "",
           userAgent: userAgent || "",
@@ -71,7 +77,7 @@ export async function POST(request: NextRequest) {
           os: ua.os.name || "",
           createdAt: clickTime ? new Date(clickTime) : new Date(),
         }),
-        Link.updateOne({ keyword }, { $inc: { clicks: 1 } }),
+        Link.updateOne({ domain: PRIMARY_DOMAIN, keyword }, { $inc: { clicks: 1 } }),
       ]);
 
       return apiSuccess({ synced: "click", keyword });
@@ -94,9 +100,10 @@ export async function POST(request: NextRequest) {
         : { iv: "", ciphertext: "" };
 
       await Link.updateOne(
-        { keyword },
+        { domain: PRIMARY_DOMAIN, keyword },
         {
           $setOnInsert: {
+            domain: PRIMARY_DOMAIN,
             keyword,
             url,
             title: title || "",
@@ -119,7 +126,7 @@ export async function POST(request: NextRequest) {
       const { keyword, clicks } = data as { keyword: string; clicks: number };
       if (!keyword) return apiError("Missing keyword", 400);
 
-      await Link.updateOne({ keyword }, { $set: { clicks } });
+      await Link.updateOne({ domain: PRIMARY_DOMAIN, keyword }, { $set: { clicks } });
       return apiSuccess({ synced: "update_clicks", keyword });
     }
 

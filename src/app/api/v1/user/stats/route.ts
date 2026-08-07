@@ -5,6 +5,7 @@ import { Click } from "@/models/Click";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { captureError } from "@/lib/errors";
 import { requireAuth } from "@/lib/api-auth";
+import { buildShortUrl } from "@/lib/domains";
 
 const TOP_LINKS_LIMIT = 5;
 const TOP_COUNTRIES_LIMIT = 5;
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const links = await Link.find({ owner: session.user.id })
-      .select("keyword url title clicks")
+      .select("domain keyword url title clicks")
       .lean();
 
     const totalLinks = links.length;
@@ -35,25 +36,39 @@ export async function GET(request: NextRequest) {
       .slice(0, TOP_LINKS_LIMIT)
       .map((link) => ({
         keyword: link.keyword,
+        domain: link.domain,
+        shortUrl: buildShortUrl(link.domain, link.keyword),
         url: link.url,
         title: link.title,
         clicks: link.clicks,
       }));
 
-    const keywords = links.map((link) => link.keyword);
+    // Clicks must be matched on (domain, keyword) pairs, never on keyword
+    // alone: two tenants may each own "/launch" on their own domain, and a
+    // keyword-only match would silently add their clicks to this user's totals.
+    const keywordsByDomain = new Map<string, string[]>();
+    for (const link of links) {
+      const bucket = keywordsByDomain.get(link.domain);
+      if (bucket) bucket.push(link.keyword);
+      else keywordsByDomain.set(link.domain, [link.keyword]);
+    }
+    const ownedClicks = Array.from(keywordsByDomain, ([domain, keywords]) => ({
+      domain,
+      keyword: { $in: keywords },
+    }));
 
     let clicks24h = 0;
     let weeklyTrend: { date: string; count: number }[] = [];
     let topCountries: { code: string; count: number }[] = [];
 
-    if (keywords.length > 0) {
+    if (ownedClicks.length > 0) {
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const sinceTrend = new Date(Date.now() - (TREND_DAYS - 1) * 24 * 60 * 60 * 1000);
 
       const [clicks24hCount, trendAgg, countriesAgg] = await Promise.all([
-        Click.countDocuments({ keyword: { $in: keywords }, createdAt: { $gte: since24h } }),
+        Click.countDocuments({ $or: ownedClicks, createdAt: { $gte: since24h } }),
         Click.aggregate([
-          { $match: { keyword: { $in: keywords }, createdAt: { $gte: sinceTrend } } },
+          { $match: { $or: ownedClicks, createdAt: { $gte: sinceTrend } } },
           {
             $group: {
               _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
@@ -62,7 +77,7 @@ export async function GET(request: NextRequest) {
           },
         ]),
         Click.aggregate([
-          { $match: { keyword: { $in: keywords }, countryCode: { $ne: "" } } },
+          { $match: { $or: ownedClicks, countryCode: { $ne: "" } } },
           { $group: { _id: "$countryCode", count: { $sum: 1 } } },
           { $sort: { count: -1 } },
           { $limit: TOP_COUNTRIES_LIMIT },

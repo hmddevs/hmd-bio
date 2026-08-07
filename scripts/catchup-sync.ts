@@ -21,6 +21,7 @@ import * as path from "path";
 import { Link } from "../src/models/Link";
 import { Click } from "../src/models/Click";
 import { encryptIP } from "../src/lib/ip";
+import { PRIMARY_DOMAIN } from "../src/lib/domains";
 
 // ── Load .env.local ──────────────────────────────────────────────────────────
 const envPath = path.resolve(__dirname, "../.env.local");
@@ -82,18 +83,23 @@ async function main() {
       const keyword = link.shorturl.replace(/^https?:\/\/hmd\.bio\//, "");
       const clickCount = parseInt(link.clicks, 10) || 0;
 
-      const existing = await Link.findOne({ keyword });
+      // Pinned to the primary domain on every query, exactly like
+      // /api/internal/sync. This is legacy YOURLS data, which only ever existed
+      // on hmd.bio; an unscoped keyword query would now match a tenant's link on
+      // a custom domain and overwrite its click count.
+      const existing = await Link.findOne({ domain: PRIMARY_DOMAIN, keyword });
       if (existing) {
         // Use $max so we never overwrite a higher MongoDB count
         // (safe to run even after Vercel starts receiving direct traffic)
         if (existing.clicks < clickCount) {
-          await Link.updateOne({ keyword }, { $max: { clicks: clickCount } });
+          await Link.updateOne({ domain: PRIMARY_DOMAIN, keyword }, { $max: { clicks: clickCount } });
           clicksUpdated++;
         }
       } else {
         // New link not yet in MongoDB
         const encrypted = link.ip ? encryptIP(link.ip) : { ciphertext: "", iv: "" };
         await Link.create({
+          domain: PRIMARY_DOMAIN,
           keyword,
           url: link.url,
           title: link.title || "",
@@ -111,9 +117,10 @@ async function main() {
     console.log(`   Processed ${synced} / ~${totalLinks} links...`);
   }
 
-  // 3. Summary
-  const mongoLinkCount = await Link.countDocuments();
-  const mongoClickDocs = await Click.countDocuments();
+  // 3. Summary. Scoped to the primary domain as well, so the figures stay
+  // comparable with what YOURLS reports rather than counting tenants' links.
+  const mongoLinkCount = await Link.countDocuments({ domain: PRIMARY_DOMAIN });
+  const mongoClickDocs = await Click.countDocuments({ domain: PRIMARY_DOMAIN });
 
   console.log(`\n✅ Catch-up complete:`);
   console.log(`   New links added: ${newLinks}`);

@@ -5,12 +5,18 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { hashIP } from "@/lib/ip";
+import { domainFromHost } from "@/lib/domains";
 import bcrypt from "bcryptjs";
 
 /**
  * Public endpoint: verifies a short link's password. Fetched directly from
  * the browser by the /password/[keyword] page, so it deliberately carries
  * no INTERNAL_SECRET check — only a strict rate limit against brute force.
+ *
+ * The domain comes from the request's own Host header rather than a parameter:
+ * the password page is served on the same origin as the link it is unlocking,
+ * so the browser supplies it, and a caller cannot point the lookup at another
+ * tenant's domain by editing the request body.
  */
 export async function POST(
   request: NextRequest,
@@ -35,9 +41,13 @@ export async function POST(
       return apiError("Keyword and password required", 400);
     }
 
+    const domain = domainFromHost(
+      request.headers.get("x-forwarded-host") ?? request.headers.get("host")
+    );
+
     await connectDB();
 
-    const link = await Link.findOne({ keyword }).select("+password").lean();
+    const link = await Link.findOne({ domain, keyword }).select("+password").lean();
     if (!link) {
       return apiError("Link not found", 404);
     }
