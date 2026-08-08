@@ -154,15 +154,27 @@ stays available as a per-customer option.
 - [x] Deletion available without contacting support.
       `DELETE /api/v1/links/{keyword}/clicks`, `mode: "anonymise" | "delete"`,
       with a confirmation echoing `domain/keyword`.
-- [ ] **SETTING `CLICK_RETENTION_DAYS` IS THE ACT THAT SWITCHES RETENTION ON,
-      and it is still unset.** The scheduled job is deployed and inert: with no
-      value, an empty value, or anything that is not a positive whole number,
-      it touches nothing, reports that retention is unconfigured, and returns
-      success. It invents no default, so nothing ages out until Umut picks the
-      number. Before the first live run, dry-run
-      `npx tsx scripts/anonymise-old-clicks.ts --age-days=<the same number>`,
-      which writes nothing and prints exactly how many rows the job will
-      rewrite. The count should be known in advance, not discovered afterwards.
+- [x] **Retention is ON. `CLICK_RETENTION_DAYS=365` set in Vercel production on
+      2026-08-08, twelve months, on Umut's instruction.** Dry run first, as the
+      plan required: 86,431 of 88,517 clicks in scope. Backlog then cleared in
+      one supervised run of `scripts/anonymise-old-clicks.ts --age-days=365
+      --confirm`, 173 batches, 86,431 rewritten, 0 remaining, and the script's
+      own post-run check confirmed no click older than the cutoff still holds
+      personal data.
+
+      Verified independently afterwards, because the whole point of choosing
+      anonymisation over deletion was that analytics survive: 88,517 clicks
+      still present, so nothing was deleted; of the 86,431 anonymised rows,
+      86,431 still carry their keyword and 86,426 their country code (the five
+      without one never had one); and the 2,086 clicks inside twelve months
+      correctly still hold their encrypted address, which is in policy rather
+      than a miss. Production redeployed so the cron reads the new value; from
+      here the daily job only has a day's worth to do.
+
+      Note what this means and does not mean. Administrative decryption of a
+      visitor address is now permanently impossible for anything older than
+      twelve months, which is the policy working, not a fault. The analytics
+      that pay for the product are untouched.
 - [x] Erasure is audited whoever performs it. The original rule left
       self-service erasure unrecorded, which meant a stolen write-scoped key
       could destroy an account's click logs link by link and leave nothing
@@ -172,11 +184,16 @@ stays available as a per-customer option.
       rows, is also what answers a later dispute. Self-service records
       `link.click.*`, an administrator on somebody else's link records
       `admin.click.*`, decided by the same `isAdministrativeAccess` predicate.
-- [ ] Do NOT create the TTL index as part of shipping. A TTL acts on existing
-      documents the moment it exists, so merging one would silently delete
-      86,000 rows on deploy. Build the mechanism; the period stays Umut's to
-      set. The audit log's own 400 days was picked assuming P3 landed at twelve
-      months, so it is now a standalone choice and revisitable.
+- [x] No TTL index, and there still must not be one. A TTL acts on existing
+      documents the moment it exists, so declaring one would have deleted
+      86,000 rows on the deploy that merged it, which is the outcome this whole
+      design exists to avoid. Retention is enforced by the scheduled job
+      clearing fields, never by the database expiring documents.
+
+      The audit log's own 400 days was picked assuming P3 would land at twelve
+      months. It has, so the two are now consistent: click personal data goes
+      at twelve months, and the record of who decrypted any of it outlives that
+      by roughly five weeks, which is the right way round.
 
 ## P4. Confirm the redirect rate-limit key
 
