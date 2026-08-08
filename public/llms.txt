@@ -94,6 +94,11 @@ Exceeding either limit returns `429 Too Many Requests`.
 - `GET /api/v1/links/{keyword}/qr` — QR code image for a short link.
 - `POST /api/v1/links/{keyword}/unlock` — verify a password-protected
   link's password, rate-limited against brute force. Public.
+- `DELETE /api/v1/links/{keyword}/clicks` — erase the click log for an owned
+  link. `mode` must be given: `anonymise` clears the personal fields and
+  keeps the anonymous analytics row, `delete` removes the records outright.
+  `confirm` must echo `domain/keyword`. Requires auth and ownership, and a
+  write-scoped key.
 
 Full request/response schemas for all of the above, plus auth (`/signup`,
 `/verify`, `/resend-verification`, `/email`), API key management
@@ -145,3 +150,12 @@ Visitor IP addresses are never stored or logged in plaintext: they are
 one-way hashed for analytics grouping, or AES-encrypted for admin-only
 decryption. This is a hard invariant of the codebase, relevant if an agent
 is asked to reason about what data this service retains about end users.
+
+Retention of click data means anonymisation rather than deletion. As a click
+ages, the personal fields on it (the encrypted visitor address, its IV, and
+the user agent) are cleared, while the anonymous row (timestamp, country,
+browser, operating system, referrer, keyword, domain) is kept, so the
+analytics survive minimisation instead of being destroyed by it. Outright
+deletion is available to any owner who prefers it, through
+`DELETE /api/v1/links/{keyword}/clicks` with `mode: "delete"`, and is never
+applied by default.

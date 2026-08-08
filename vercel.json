@@ -5,6 +5,10 @@
     {
       "path": "/api/internal/domains/recheck",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/internal/clicks/retention",
+      "schedule": "30 4 * * *"
     }
   ],
   "redirects": [

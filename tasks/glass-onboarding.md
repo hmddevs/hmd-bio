@@ -143,8 +143,35 @@ user agent) and keeps the anonymous row (timestamp, country, browser, OS,
 keyword). That is what data minimisation actually asks for. Outright deletion
 stays available as a per-customer option.
 
-- [ ] Anonymise the personal fields on a schedule, keeping the analytics row.
-- [ ] Deletion available without contacting support.
+- [x] Anonymise the personal fields on a schedule, keeping the analytics row.
+      `src/lib/click-retention.ts` holds the rules,
+      `scripts/anonymise-old-clicks.ts` is the operator interface, and
+      `/api/internal/clicks/retention` is the Vercel Cron job (daily at 04:30,
+      authenticated with `CRON_SECRET` exactly as the domain re-check is).
+      Bounded at 40 batches of 500 per invocation, so a first run on a backlog
+      cannot run away; the filter makes a truncated run resume rather than
+      repeat.
+- [x] Deletion available without contacting support.
+      `DELETE /api/v1/links/{keyword}/clicks`, `mode: "anonymise" | "delete"`,
+      with a confirmation echoing `domain/keyword`.
+- [ ] **SETTING `CLICK_RETENTION_DAYS` IS THE ACT THAT SWITCHES RETENTION ON,
+      and it is still unset.** The scheduled job is deployed and inert: with no
+      value, an empty value, or anything that is not a positive whole number,
+      it touches nothing, reports that retention is unconfigured, and returns
+      success. It invents no default, so nothing ages out until Umut picks the
+      number. Before the first live run, dry-run
+      `npx tsx scripts/anonymise-old-clicks.ts --age-days=<the same number>`,
+      which writes nothing and prints exactly how many rows the job will
+      rewrite. The count should be known in advance, not discovered afterwards.
+- [x] Erasure is audited whoever performs it. The original rule left
+      self-service erasure unrecorded, which meant a stolen write-scoped key
+      could destroy an account's click logs link by link and leave nothing
+      behind. The log's remit is administrative access *and* destructive
+      actions, and an erasure is irreversible whoever asks for it; an entry
+      recording that a customer erased their own data, when, and over how many
+      rows, is also what answers a later dispute. Self-service records
+      `link.click.*`, an administrator on somebody else's link records
+      `admin.click.*`, decided by the same `isAdministrativeAccess` predicate.
 - [ ] Do NOT create the TTL index as part of shipping. A TTL acts on existing
       documents the moment it exists, so merging one would silently delete
       86,000 rows on deploy. Build the mechanism; the period stays Umut's to
