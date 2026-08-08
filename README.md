@@ -157,7 +157,8 @@ Required only if you want users to attach their own hostnames. Without these, th
 | `VERCEL_API_TOKEN` | Vercel REST API token with domain read/write on the project below. Used to attach and detach user domains and to read certificate status |
 | `VERCEL_PROJECT_ID` | The Vercel project that user domains are attached to |
 | `VERCEL_TEAM_ID` | Only needed when that project belongs to a team rather than a personal account |
-| `CRON_SECRET` | Authorises the daily domain re-verification cron. Vercel Cron sends it as `Authorization: Bearer <value>`, which is why it is separate from `INTERNAL_SECRET` |
+| `CRON_SECRET` | Authorises the daily cron jobs (domain re-verification, click retention). Vercel Cron sends it as `Authorization: Bearer <value>`, which is why it is separate from `INTERNAL_SECRET` |
+| `CLICK_RETENTION_DAYS` | Click retention period, in whole days. A policy number, not a secret. Setting it is the act that switches scheduled retention on; while it is unset, empty or not a positive integer the job runs and touches nothing. There is no default |
 | `VERCEL_APEX_IP` / `VERCEL_CNAME_TARGET` | The DNS targets handed to users in their setup instructions |
 | `MAX_DOMAINS_PER_USER` | Per-account domain cap. Defaults to 3 |
 
@@ -246,7 +247,9 @@ Found a vulnerability? Please report it privately rather than opening a public i
 vercel --prod
 ```
 
-The daily domain re-verification cron is declared in `vercel.json` and needs `CRON_SECRET` set in the project's environment. Custom domains additionally require the Vercel API credentials listed above, because attaching a user's hostname is a Vercel project operation.
+The daily crons are declared in `vercel.json` and need `CRON_SECRET` set in the project's environment: domain re-verification at 04:00 and click retention at 04:30. Custom domains additionally require the Vercel API credentials listed above, because attaching a user's hostname is a Vercel project operation.
+
+Click retention anonymises the personal fields on old clicks (encrypted address, IV, user agent) and keeps the anonymous analytics row. It stays inert until `CLICK_RETENTION_DAYS` is set to a positive whole number of days, and it never assumes a default. Before setting it for the first time, dry-run `npx tsx scripts/anonymise-old-clicks.ts --age-days=<the same number>`, which writes nothing and prints exactly how many rows the first live run would rewrite. There is deliberately no TTL index on the clicks collection.
 
 ## Contributing
 

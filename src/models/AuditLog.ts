@@ -8,12 +8,16 @@ import {
 } from "../lib/audit-record";
 
 /**
- * Administrative audit trail.
+ * Audit trail for privileged access and for destructive actions.
  *
  * Exists so that administrative access to a visitor's decrypted IP, and every
- * destructive administrative action, leaves a record. Required before the
- * platform can sit behind a signed data processing agreement: a processor has
- * to be able to say who looked at what, and when.
+ * destructive action, leaves a record. Required before the platform can sit
+ * behind a signed data processing agreement: a processor has to be able to say
+ * who looked at what, who erased what, and when.
+ *
+ * Mostly administrative, but not exclusively: an owner erasing their own click
+ * log is recorded too, under the `link.` actions, because the destructive half
+ * of the remit does not care who performed the action.
  *
  * DATA PROTECTION INVARIANT. This collection must never become a second copy
  * of the sensitive data it describes. It therefore stores no decrypted IP, no
