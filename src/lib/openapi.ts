@@ -489,6 +489,109 @@ export const openApiSpec = {
           "500": { $ref: "#/components/responses/InternalError" },
         },
       },
+      delete: {
+        tags: ["Stats"],
+        summary: "Erase the click log for a link",
+        description:
+          "Self-service erasure of the visitor data recorded against one of your own links, so " +
+          "removing it never requires contacting support. Two modes, and you must name one:\n\n" +
+          "- `anonymise` clears the personal fields (the encrypted visitor address, its IV, and " +
+          "the user agent) and keeps the row, so the link's analytics (timestamp, country, " +
+          "browser, operating system, referrer) survive. This is the recommended mode, and the " +
+          "one the platform's own retention runs apply as clicks age.\n" +
+          "- `delete` removes the click records outright. Irreversible, and it destroys the " +
+          "link's analytics along with the personal data.\n\n" +
+          "`confirm` must echo the exact `domain/keyword` being erased, e.g. `hmd.bio/my-link`, " +
+          "so neither mode can be triggered by an accidental or replayed request. **A read-only " +
+          "API key is refused with a 403**, since scope is derived from the HTTP method.\n\n" +
+          "Erasure covers every click recorded up to the moment the request is accepted. A visit " +
+          "arriving while it runs is a visit made after the request, so it is kept. Rate-limited " +
+          "to 5 requests per minute, well below the general authenticated tier, because it is " +
+          "irreversible.",
+        security: [{ session: [] }, { BearerAuth: [] }],
+        parameters: [{ $ref: "#/components/parameters/KeywordPath" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["mode", "confirm"],
+                properties: {
+                  mode: {
+                    type: "string",
+                    enum: ["anonymise", "delete"],
+                    description:
+                      "`anonymise` keeps the analytics row; `delete` removes it. No default.",
+                  },
+                  confirm: {
+                    type: "string",
+                    description: "Must equal `domain/keyword` for the link being erased.",
+                    example: "hmd.bio/my-link",
+                  },
+                },
+              },
+              example: { mode: "anonymise", confirm: "hmd.bio/my-link" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Counts of what was erased",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiSuccessEnvelope" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: {
+                          type: "object",
+                          properties: {
+                            domain: { type: "string", example: "hmd.bio" },
+                            keyword: { type: "string", example: "my-link" },
+                            mode: { type: "string", enum: ["anonymise", "delete"] },
+                            anonymised: {
+                              type: "integer",
+                              description:
+                                "Rows whose personal fields were cleared. Zero in `delete` mode, " +
+                                "and zero on a repeat call, since rows already anonymised are " +
+                                "left alone.",
+                              example: 42,
+                            },
+                            deleted: {
+                              type: "integer",
+                              description: "Rows removed. Zero in `anonymise` mode.",
+                              example: 0,
+                            },
+                            incomplete: {
+                              type: "boolean",
+                              description:
+                                "True when one call could not finish and rows still match. A " +
+                                "single request is bounded so that it cannot outlive its " +
+                                "invocation and leave rows erased with nothing recording it. " +
+                                "Re-issue the identical request until this is false; do not " +
+                                "treat a `true` response as a completed erasure.",
+                              example: false,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "400": { $ref: "#/components/responses/ValidationError" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "429": { $ref: "#/components/responses/RateLimited" },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
     },
     "/api/v1/links/{keyword}/qr": {
       post: {
@@ -2484,9 +2587,18 @@ export const openApiSpec = {
       },
       Click: {
         type: "object",
+        description:
+          "One recorded visit. The visitor's IP address is never part of this shape: it is " +
+          "stored encrypted and is only ever decrypted on the audited admin route. Once a click " +
+          "has been anonymised, by retention or by `DELETE /api/v1/links/{keyword}/clicks`, " +
+          "`userAgent` is an empty string and every other field below is unchanged.",
         properties: {
           keyword: { type: "string" },
           referrer: { type: "string" },
+          userAgent: {
+            type: "string",
+            description: "Empty once the click has been anonymised.",
+          },
           countryCode: { type: "string" },
           browser: { type: "string" },
           os: { type: "string" },

@@ -12,6 +12,14 @@ export const AUDIT_ACTIONS = [
   // exists at all.
   "admin.click_ip.decrypt",
 
+  // Erasure of a link's click log by someone who does not own it. An
+  // administrator doing this to a customer's link destroys that customer's
+  // analytics, which is precisely what this collection exists to account for.
+  // `anonymise` clears the personal fields and keeps the row, `delete` removes
+  // the rows outright.
+  "admin.click.anonymise",
+  "admin.click.delete",
+
   // Account lifecycle and privilege. `disable` hides an account, `promote`
   // hands out administrative access; both matter as much as a deletion.
   "admin.user.approve",
@@ -35,6 +43,27 @@ export const AUDIT_ACTIONS = [
   // whereas a repointed link keeps resolving and silently sends its traffic
   // somewhere else.
   "admin.link.edit",
+
+  // NON-ADMINISTRATIVE, and the only entries here that are. An owner erasing
+  // the click log on their own link, through the self-service route.
+  //
+  // The original rule was that self-service erasure goes unrecorded, on the
+  // grounds that this collection is about administrative access. That reading
+  // of its remit was too narrow: the remit is administrative access AND
+  // destructive actions, and an erasure is irreversible whoever performs it. A
+  // stolen write-scoped key working through an account link by link would
+  // otherwise destroy every click log and leave nothing behind at all.
+  //
+  // It also protects us, which is squarely the DPA purpose this log serves. If
+  // a customer later disputes what became of their data, an entry recording
+  // that they themselves asked for the erasure, when, and how many rows it
+  // covered, is the evidence that answers the question.
+  //
+  // Kept under a distinct `link.` prefix rather than folded into the `admin.`
+  // pair above so a reviewer can tell at a glance whether an erasure was
+  // self-service or done by an administrator to somebody else's data.
+  "link.click.anonymise",
+  "link.click.delete",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -44,10 +73,11 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
  * than ordinary self-service.
  *
  * `requireOwnership` lets an administrator through on somebody else's link, so
- * the same handler serves both cases and only one of them belongs in the audit
- * trail. A user acting on their own link is not administrative access and must
- * not be recorded. Kept here, in one place, because the delete and edit paths
- * would otherwise each restate the condition and drift apart.
+ * the same handler serves both cases and they must not be recorded as the same
+ * thing. For most callers this decides whether an entry is written at all; for
+ * the destructive click routes, where both cases are recorded, it decides which
+ * of the two actions is used. Kept here, in one place, because the delete and
+ * edit paths would otherwise each restate the condition and drift apart.
  *
  * An unowned resource (`ownerId === null`, a link detached when its owner was
  * deleted) counts as administrative: nobody can act on it as its owner.
