@@ -305,9 +305,11 @@ it regresses.
       `vercelDomainId` guard as the user-facing delete, and the projection was widened to
       select that field, without which the guard could never have fired. `removeDomain`
       treats a Vercel `not_found` as success, so retries are idempotent.
-- [ ] 5.4 Two pending accounts have generated-looking usernames but verified emails:
-      `[redacted]`, `[redacted]`. They cleared email verification, so
-      the purge script deliberately spared them. Umut's call whether to remove them.
+- [ ] 5.4 Two pending accounts have generated-looking usernames but verified emails.
+      They cleared email verification, so the purge script deliberately spared them.
+      Umut's call whether to remove them. Identify them by querying the database
+      directly: user addresses must not be written into this repository, which is
+      public.
 
 ---
 
