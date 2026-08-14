@@ -48,3 +48,6 @@ package-lock.json
 
 # Internal working memory, not part of the public project
 MEMORY.md
+
+# Working notes: local only, never published (this repo is public)
+tasks/
