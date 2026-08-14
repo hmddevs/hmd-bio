@@ -1,7 +1,7 @@
 # hmd.bio — CLAUDE.md
 
 ## What this is
-- Live URL shortener and link analytics platform under HMD Corp. See README.md for full feature list.
+- Live URL shortener and link analytics platform by HMD Developments. See README.md for full feature list.
 - Rebuilt in 2026; live since May 2023. Public users, registered users, and admins.
 - REST API at `/api/v1/` with response-format negotiation (`?format=json|xml|jsonp|text`).
 
