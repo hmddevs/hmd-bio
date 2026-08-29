@@ -31,8 +31,15 @@ export default function HomePage() {
               },
               provider: {
                 "@type": "Organization",
+                "@id": "https://hmddevs.org/#organization",
                 name: "HMD Developments",
                 url: "https://hmddevs.org",
+                founder: {
+                  "@type": "Person",
+                  "@id": "https://guden.tr/#person",
+                  name: "Umut Güden",
+                  url: "https://guden.tr",
+                },
               },
             }),
           }}
