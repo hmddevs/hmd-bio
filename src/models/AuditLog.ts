@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
+import { connectionScopedModel } from "./connection-scoped-model";
 import {
   AUDIT_ACTIONS,
   AUDIT_SUBJECT_TYPES,
@@ -150,5 +151,7 @@ AuditLogSchema.pre("save", function () {
   }
 });
 
-export const AuditLog: Model<IAuditLog> =
-  mongoose.models.AuditLog || mongoose.model<IAuditLog>("AuditLog", AuditLogSchema);
+export const AuditLog: Model<IAuditLog> = connectionScopedModel<IAuditLog>(
+  "AuditLog",
+  AuditLogSchema
+);

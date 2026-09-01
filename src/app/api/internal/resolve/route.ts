@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { connectDB } from "@/lib/db";
+import { connectDB, registerBackgroundDbWork } from "@/lib/db";
 import { Link, LIVE_LINK_FILTER, type ILinkTarget } from "@/models/Link";
 import { Click } from "@/models/Click";
-import { hashIP, encryptIP } from "@/lib/ip";
+import { hashIP, encryptIP, getClientIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { timingSafeEqualStr } from "@/lib/utils";
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
   const domain = normaliseHost(request.nextUrl.searchParams.get("domain") ?? "") || PRIMARY_DOMAIN;
 
   // Rate limit by IP: 120 requests per minute
-  const clientIP = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const clientIP = getClientIP(request.headers) || "unknown";
   const rl = await rateLimit(`resolve:${hashIP(clientIP)}`, { limit: 120, windowMs: 60_000 });
   if (!rl.allowed) {
     return Response.json({ error: "Too many requests" }, { status: 429 });
@@ -106,7 +106,10 @@ export async function GET(request: NextRequest) {
     const { iv: ipIv, ciphertext: ipRaw } =
       rawIP !== "unknown" ? encryptIP(rawIP) : { iv: "", ciphertext: "" };
 
-    Promise.all([
+    // Registered rather than left bare: on workerd the request's connection is
+    // closed once the response is sent, and unregistered work is cancelled with
+    // the request context, so an unregistered write would be dropped.
+    const clickWrite = Promise.all([
       Click.create({
         domain,
         keyword,
@@ -122,6 +125,7 @@ export async function GET(request: NextRequest) {
     ]).catch((err) => {
       captureError(err, { route: "internal/resolve", domain, keyword });
     });
+    registerBackgroundDbWork(clickWrite);
   } catch (err) {
     captureError(err, { route: "internal/resolve", domain, keyword, stage: "click-log-setup" });
   }

@@ -1,4 +1,5 @@
-import mongoose, { Schema, Document, Model } from "mongoose";
+import { Schema, Document, Model } from "mongoose";
+import { connectionScopedModel } from "./connection-scoped-model";
 import { PRIMARY_DOMAIN } from "../lib/domains";
 
 export interface IClick extends Document {
@@ -45,5 +46,7 @@ ClickSchema.index({ domain: 1, keyword: 1, browser: 1 });
 ClickSchema.index({ domain: 1, keyword: 1, os: 1 });
 ClickSchema.index({ countryCode: 1 });
 
-export const Click: Model<IClick> =
-  mongoose.models.Click || mongoose.model<IClick>("Click", ClickSchema);
+export const Click: Model<IClick> = connectionScopedModel<IClick>(
+  "Click",
+  ClickSchema
+);

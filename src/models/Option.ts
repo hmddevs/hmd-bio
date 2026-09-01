@@ -1,4 +1,5 @@
-import mongoose, { Schema, Document, Model } from "mongoose";
+import { Schema, Document, Model } from "mongoose";
+import { connectionScopedModel } from "./connection-scoped-model";
 
 export interface IOption extends Document {
   key: string;
@@ -15,5 +16,7 @@ const OptionSchema = new Schema<IOption>(
   }
 );
 
-export const Option: Model<IOption> =
-  mongoose.models.Option || mongoose.model<IOption>("Option", OptionSchema);
+export const Option: Model<IOption> = connectionScopedModel<IOption>(
+  "Option",
+  OptionSchema
+);

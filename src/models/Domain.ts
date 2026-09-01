@@ -1,4 +1,5 @@
-import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { Schema, Document, Model, Types } from "mongoose";
+import { connectionScopedModel } from "./connection-scoped-model";
 
 export type DomainStatus =
   | "pending_dns"
@@ -112,5 +113,7 @@ const DomainSchema = new Schema<IDomain>(
 // scans by status within an owner.
 DomainSchema.index({ owner: 1, status: 1 });
 
-export const Domain: Model<IDomain> =
-  mongoose.models.Domain || mongoose.model<IDomain>("Domain", DomainSchema);
+export const Domain: Model<IDomain> = connectionScopedModel<IDomain>(
+  "Domain",
+  DomainSchema
+);

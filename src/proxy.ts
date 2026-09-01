@@ -11,6 +11,7 @@ import {
 // that would shadow one of these. Defined in its own module so the two cannot
 // drift; see src/lib/reserved-paths.ts.
 import { BYPASS_PREFIXES } from "@/lib/reserved-paths";
+import { getClientIP } from "@/lib/ip";
 
 /**
  * The only application paths a custom domain serves. Everything a short link
@@ -297,10 +298,16 @@ export async function proxy(request: NextRequest) {
   }
 
   // Collect request metadata for click logging
-  const ip = request.headers.get("x-forwarded-for") || "";
+  const ip = getClientIP(request.headers);
   const userAgent = request.headers.get("user-agent") || "";
   const referrer = request.headers.get("referer") || "";
-  const countryCode = request.headers.get("x-vercel-ip-country") || "";
+  // Geo header name depends on the host platform: Vercel sets
+  // `x-vercel-ip-country`, Cloudflare sets `cf-ipcountry`. Both are read so a
+  // platform move cannot silently blank every click's country.
+  const countryCode =
+    request.headers.get("x-vercel-ip-country") ||
+    request.headers.get("cf-ipcountry") ||
+    "";
 
   // ── Resolve via internal API (MongoDB) ──
   const resolveUrl = new URL("/api/internal/resolve", internalBase);
@@ -308,7 +315,11 @@ export async function proxy(request: NextRequest) {
   resolveUrl.searchParams.set("domain", domain);
 
   const headers: Record<string, string> = {
-    "x-forwarded-for": ip,
+    // Forwarded on a dedicated header: this request re-enters through the
+    // public edge, where Cloudflare would append to x-forwarded-for and make
+    // the first entry caller controlled again. Trusted only alongside
+    // x-internal-secret below.
+    "x-client-ip": ip,
     "user-agent": userAgent,
     referer: referrer,
     "x-geo-country": countryCode,

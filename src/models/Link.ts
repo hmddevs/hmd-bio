@@ -1,4 +1,5 @@
-import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { Schema, Document, Model, Types } from "mongoose";
+import { connectionScopedModel } from "./connection-scoped-model";
 import { PRIMARY_DOMAIN } from "../lib/domains";
 
 // A single platform's deeplink override. Subdocument only (no _id): these
@@ -114,5 +115,7 @@ LinkSchema.index({ owner: 1 }, { sparse: true });
  */
 export const LIVE_LINK_FILTER = { domainDetachedAt: null } as const;
 
-export const Link: Model<ILink> =
-  mongoose.models.Link || mongoose.model<ILink>("Link", LinkSchema);
+export const Link: Model<ILink> = connectionScopedModel<ILink>(
+  "Link",
+  LinkSchema
+);
