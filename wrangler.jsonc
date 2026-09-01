@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hmd-bio",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "routes": [{ "pattern": "hmd.bio/*", "zone_name": "hmd.bio" },
+    { "pattern": "go.guden.com.tr/*", "zone_name": "guden.com.tr" }],
+  "workers_dev": false,
+  "observability": { "enabled": true }
+}
