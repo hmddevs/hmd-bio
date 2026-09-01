@@ -1,0 +1,60 @@
+# Deploys hmd-bio to Cloudflare Workers on every push to main.
+#
+# Replaces Vercel's git integration, which deployed on push until the account
+# was retired. Typecheck, tests and the build all run before the deploy step,
+# so any of them failing stops the deploy rather than shipping a broken worker.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hmd-bio
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck and test
+        working-directory: .
+        run: |
+          # Script names vary across these repos: typecheck vs type-check, and
+          # `test` is watch-mode vitest in some, which would hang CI forever.
+          # Pick the first script that exists, preferring the non-watch variant.
+          pick() {
+            for s in "$@"; do
+              if node -e "process.exit((require('./package.json').scripts||{})['$s'] ? 0 : 1)"; then
+                echo "$s"; return 0
+              fi
+            done
+            return 0
+          }
+          TC=$(pick type-check typecheck)
+          if [ -n "$TC" ]; then pnpm run "$TC"; fi
+          TE=$(pick test:run test)
+          if [ -n "$TE" ]; then pnpm run "$TE"; fi
+      - name: Build and deploy
+        working-directory: .
+        run: |
+          npx opennextjs-cloudflare build
+          npx opennextjs-cloudflare deploy
+        env:
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+          NEXT_PUBLIC_PRIMARY_DOMAIN: ${{ vars.NEXT_PUBLIC_PRIMARY_DOMAIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
