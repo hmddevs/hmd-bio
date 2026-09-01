@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link, LIVE_LINK_FILTER } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { hashIP } from "@/lib/ip";
+import { hashIP, getClientIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { domainQuerySchema } from "@/lib/validations";
 import { PRIMARY_DOMAIN, buildShortUrl } from "@/lib/domains";
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   }
   const domain = parsedDomain.data.domain ?? PRIMARY_DOMAIN;
 
-  const rawIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  const rawIp = getClientIP(request.headers);
   const ipHash = hashIP(rawIp);
   const rl = await rateLimit(`expand:${ipHash}`, { tier: "public" });
   if (!rl.allowed) {

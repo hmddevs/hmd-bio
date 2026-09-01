@@ -16,6 +16,27 @@ function getIPSalt(): string {
 }
 
 /**
+ * The client IP as determined by Cloudflare.
+ *
+ * `cf-connecting-ip` is set by Cloudflare's edge and cannot be forged by the
+ * client. `x-forwarded-for` must NOT be trusted here: Cloudflare *appends* the
+ * real address to whatever the client sent, so the first entry is caller
+ * controlled. Vercel used to overwrite the header, which is why the old
+ * `split(",")[0]` was safe there and is not safe here.
+ *
+ * `x-client-ip` is accepted first, but only ever set by our own proxy on
+ * internal requests that also carry the internal secret.
+ */
+export function getClientIP(headers: Headers): string {
+  return (
+    headers.get("x-client-ip")?.trim() ||
+    headers.get("cf-connecting-ip")?.trim() ||
+    headers.get("x-real-ip")?.trim() ||
+    ""
+  );
+}
+
+/**
  * One-way hash an IP address for GDPR compliance.
  * Retains groupability (same IP → same hash) without storing the raw IP.
  */

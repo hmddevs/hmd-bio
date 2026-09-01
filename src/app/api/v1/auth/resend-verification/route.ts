@@ -4,13 +4,13 @@ import { User } from "@/models/User";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
-import { hashIP } from "@/lib/ip";
+import { hashIP, getClientIP } from "@/lib/ip";
 import { sendVerificationEmail } from "@/lib/email";
 import { randomBytes } from "crypto";
 
 export async function POST(request: NextRequest) {
   const rawIp =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    getClientIP(request.headers);
   const ipHash = hashIP(rawIp);
   const rl = await rateLimit(`resend-verify:${ipHash}`, { tier: "public" });
   if (!rl.allowed) {

@@ -2,14 +2,14 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { hashIP } from "@/lib/ip";
+import { hashIP, getClientIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { PRIMARY_DOMAIN } from "@/lib/domains";
 
 export async function GET(request: NextRequest) {
   try {
-    const rawIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    const rawIp = getClientIP(request.headers);
     const ipHash = hashIP(rawIp);
     const rl = await rateLimit(`stats:${ipHash}`, { tier: "public" });
     if (!rl.allowed) {

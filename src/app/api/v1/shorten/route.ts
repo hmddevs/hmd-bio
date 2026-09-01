@@ -4,7 +4,7 @@ import { Link } from "@/models/Link";
 import { shortenSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest, requireTurnstile } from "@/lib/auth";
-import { hashIP, encryptIP } from "@/lib/ip";
+import { hashIP, encryptIP, getClientIP } from "@/lib/ip";
 import { rateLimit, rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { Domain } from "@/models/Domain";
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       return apiError("URL protocol not allowed", 400);
     }
 
-    const rawIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    const rawIp = getClientIP(request.headers);
     const ipHash = hashIP(rawIp);
 
     // Anonymous callers share a per-IP bucket at the public rate. An

@@ -5,7 +5,7 @@ import { signupSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
-import { hashIP } from "@/lib/ip";
+import { hashIP, getClientIP } from "@/lib/ip";
 import { isReservedKeyword } from "@/lib/utils";
 import { sendVerificationEmail } from "@/lib/email";
 import { requireTurnstile } from "@/lib/auth";
@@ -15,7 +15,7 @@ import { randomBytes } from "crypto";
 export async function POST(request: NextRequest) {
   try {
     const rawIp =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+      getClientIP(request.headers) || "unknown";
     const ipHash = hashIP(rawIp);
     // Account creation is deliberately far tighter than the public tier's
     // 30/min. A person signs up once; anything repeating is automation.
