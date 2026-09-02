@@ -87,7 +87,7 @@ export default function RootLayout({
               name: "HMD Developments",
               url: "https://hmddevs.org",
               logo: "https://hmd.bio/icon",
-              sameAs: ["https://github.com/hmd-corp"],
+              sameAs: ["https://github.com/hmddevs"],
             }),
           }}
         />
