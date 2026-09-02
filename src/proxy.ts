@@ -12,6 +12,8 @@ import {
 // drift; see src/lib/reserved-paths.ts.
 import { BYPASS_PREFIXES } from "@/lib/reserved-paths";
 import { getClientIP } from "@/lib/ip";
+import { isCachedLinkExpired, readCachedLink } from "@/lib/link-cache";
+import { deferUntilResponseSent } from "@/lib/worker-context";
 
 /**
  * The only application paths a custom domain serves. Everything a short link
@@ -138,6 +140,68 @@ async function fetchDomainConfig(
   } catch {
     return null;
   }
+}
+
+/**
+ * Calls the internal resolve endpoint for its side effects alone, after the
+ * response has already been sent.
+ *
+ * Used on a cache hit, where the redirect no longer needs the endpoint's answer
+ * but still needs everything it does: the click write, and the refreshed cache
+ * entry that keeps the next request fast.
+ *
+ * Never retried, unlike the foreground loop below. That loop retries because it
+ * has no answer to redirect with; this one has already answered. A `fetch` can
+ * throw after the endpoint has registered its click write, so a retry would
+ * sometimes count one visit twice in order to recover a row that had most
+ * likely landed, and an inflated click total is a worse failure than a missing
+ * one.
+ *
+ * Returns false when the work could not be scheduled at all, which on workerd
+ * means it would be cancelled with the request context. The caller must then
+ * abandon the cache hit and resolve in the foreground: a redirect that silently
+ * drops its click is a worse outcome than a slow one.
+ */
+function scheduleResolveInBackground(url: string, headers: Record<string, string>): boolean {
+  const work = (async () => {
+    try {
+      const res = await fetch(url, {
+        headers,
+        // Never follow a redirect, for the reason set out on fetchDomainConfig
+        // above: a 3xx here means the origin is wrong, and `x-internal-secret`
+        // is a custom header, which the Fetch standard does not strip across
+        // origins the way it strips Authorization. This call is the one where
+        // that would be invisible, since it inspects no status and reads no
+        // body.
+        redirect: "manual",
+      });
+      // Never read: this call is made for the click it logs and the cache entry
+      // it repairs. Cancelled explicitly rather than left for the runtime to
+      // collect.
+      await res.body?.cancel();
+    } catch {
+      // Network or timeout. A lost click here costs one analytics row; the
+      // visitor has already been redirected.
+    }
+  })();
+
+  return deferUntilResponseSent(work);
+}
+
+/**
+ * Short links must not be cached by the browser.
+ *
+ * 37 of the links are configured as 301, which is cacheable indefinitely by
+ * default. Without this header a visitor who has followed such a link keeps the
+ * old target forever, so editing or taking down a link would not reach them and
+ * the KV invalidation below would be defeated at the last hop. It also keeps
+ * click counting honest: a cached redirect is a visit that never reaches us.
+ *
+ * Matches the header the deeplink fallback in this file already sets.
+ */
+function withNoStore(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "private, no-cache, no-store");
+  return res;
 }
 
 export async function proxy(request: NextRequest) {
@@ -326,11 +390,45 @@ export async function proxy(request: NextRequest) {
     "x-internal-secret": process.env.INTERNAL_SECRET || "",
   };
 
+  // ── Cache hit: redirect without the internal fetch or a MongoDB handshake ──
+  //
+  // Read only on the primary domain, because only primary-domain links are ever
+  // written (see buildCacheEntry): a custom domain must keep passing through
+  // `isDomainServable`, and a KV read for a key that cannot exist would add
+  // latency to the one path that has none to spare.
+  //
+  // Expiry is re-checked here rather than trusted from the write, so a link that
+  // expires while its entry is still live falls through to the ordinary path and
+  // gets the 410 it is due. Password protection is likewise read from the entry
+  // and acted on per request; nothing about "may this request follow the link"
+  // is baked into the cached answer.
+  const cached =
+    domain === PRIMARY_DOMAIN ? await readCachedLink(domain, keyword) : null;
+
+  if (cached && !isCachedLinkExpired(cached) && scheduleResolveInBackground(resolveUrl.toString(), headers)) {
+    if (cached.isPasswordProtected) {
+      const passwordUrl = new URL(`/password/${keyword}`, request.url);
+      return NextResponse.rewrite(passwordUrl);
+    }
+
+    // Composed exactly as the uncached branch composes it, from the same
+    // stored flags, so a hit and a miss cannot produce different targets.
+    const target = composeForwardedTarget(cached.url, {
+      extraPath: cached.forwardPath ? extraPath : "",
+      search: cached.forwardQuery ? request.nextUrl.search : "",
+    });
+
+    return withNoStore(NextResponse.redirect(target, cached.statusCode));
+  }
+
   let genuineNotFound = false;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await fetch(resolveUrl.toString(), { headers });
+      // Manual for the same reason as the two calls above: a 3xx from this
+      // origin means the origin is wrong, and following it would replay
+      // `x-internal-secret` to wherever it pointed.
+      const res = await fetch(resolveUrl.toString(), { headers, redirect: "manual" });
 
       if (res.status === 404 || res.status === 410) {
         // Genuinely missing / expired — stop retrying
@@ -363,7 +461,7 @@ export async function proxy(request: NextRequest) {
         search: data.forwardQuery === true ? request.nextUrl.search : "",
       });
 
-      return NextResponse.redirect(target, data.statusCode || 302);
+      return withNoStore(NextResponse.redirect(target, data.statusCode || 302));
     } catch {
       // Network / timeout — retry once
       continue;

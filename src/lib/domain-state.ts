@@ -112,6 +112,13 @@ export async function transition(
  *
  * Already-stamped rows keep their original timestamp: the filter only checks
  * for null, and the first detachment is the meaningful date.
+ *
+ * No link-cache invalidation here, and that is a consequence of one decision
+ * rather than an omission: `src/lib/link-cache.ts` caches primary-domain links
+ * only, and a hostname reaching this function is by definition a custom domain,
+ * so there is no entry to drop. Extending the cache to custom domains makes
+ * this a stale-redirect site and it must gain an invalidation pass at the same
+ * time, keyed by the keywords the update touched.
  */
 export async function detachLinksForHostname(hostname: string): Promise<number> {
   const result = await Link.updateMany(

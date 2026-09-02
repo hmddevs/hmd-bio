@@ -7,6 +7,7 @@ import { encryptIP } from "@/lib/ip";
 import { captureError } from "@/lib/errors";
 import { timingSafeEqualStr } from "@/lib/utils";
 import { PRIMARY_DOMAIN } from "@/lib/domains";
+import { invalidateCachedLink } from "@/lib/link-cache";
 import {
   syncClickSchema,
   syncLinkSchema,
@@ -133,6 +134,21 @@ export async function POST(request: NextRequest) {
         },
         { upsert: true }
       );
+
+      // `$setOnInsert` only, so an existing link is never repointed here and
+      // there is nothing live to invalidate. The delete is issued anyway, for
+      // the insert case and for the same invariant the other writers keep:
+      // every write to (domain, keyword) clears the key.
+      try {
+        await invalidateCachedLink(PRIMARY_DOMAIN, keyword);
+      } catch (err) {
+        captureError(err, {
+          route: "internal/sync",
+          event,
+          stage: "cache-invalidate",
+          keyword,
+        });
+      }
 
       return apiSuccess({ synced: "link", keyword });
     }

@@ -5,8 +5,26 @@
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // Link resolution cache. A hit answers the redirect from the middleware
+  // without the self-fetch to /api/internal/resolve and without a MongoDB
+  // handshake, which together were the whole of the 3.4s median. Optional
+  // infrastructure: with the binding absent every path falls back to MongoDB.
+  // See src/lib/link-cache.ts for what is cached and what deliberately is not.
+  "kv_namespaces": [
+    {
+      "binding": "LINK_CACHE",
+      "id": "99ec4490a2884388a9c31f6a0f1248b8",
+      "preview_id": "be2f7b78567741b19d4cf267ce2f9508"
+    }
+  ],
   "routes": [{ "pattern": "hmd.bio/*", "zone_name": "hmd.bio" },
     { "pattern": "go.guden.com.tr/*", "zone_name": "guden.com.tr" }],
+  // Smart Placement runs the Worker near Atlas rather than near the visitor.
+  // Every short-link redirect needs a database round trip, and on Workers each
+  // request opens its own connection, so the handshake RTT dominates. Placing
+  // compute next to the data is the right trade here even though it costs a
+  // little latency on the purely static pages.
+  "placement": { "mode": "smart" },
   "workers_dev": false,
   "observability": { "enabled": true }
 }

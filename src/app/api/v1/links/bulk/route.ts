@@ -10,6 +10,7 @@ import { captureError } from "@/lib/errors";
 import { generateKeyword, isReservedKeyword, isAllowedProtocol } from "@/lib/utils";
 import { checkDomainWritable } from "@/lib/domain-access";
 import { PRIMARY_DOMAIN, buildShortUrl } from "@/lib/domains";
+import { invalidateCachedLinks } from "@/lib/link-cache";
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -114,6 +115,31 @@ export async function POST(request: NextRequest) {
         shortUrl: buildShortUrl(domain, keyword),
         status: "created",
       });
+    }
+
+    // Same invariant as the single-link writers: every write to (domain,
+    // keyword) clears the key, so an entry left behind by a failed delete
+    // cannot be inherited by a newly imported link of the same name. Batched
+    // after the loop rather than issued per row, so a large import costs one
+    // round of deletes instead of one per created link.
+    const createdByDomain = new Map<string, string[]>();
+    for (const result of results) {
+      if (result.status !== "created") continue;
+      const keywords = createdByDomain.get(result.domain) ?? [];
+      keywords.push(result.keyword);
+      createdByDomain.set(result.domain, keywords);
+    }
+    for (const [hostname, keywords] of createdByDomain) {
+      try {
+        await invalidateCachedLinks(hostname, keywords);
+      } catch (err) {
+        captureError(err, {
+          route: "api/v1/links/bulk",
+          stage: "cache-invalidate",
+          domain: hostname,
+          count: keywords.length,
+        });
+      }
     }
 
     // Best-effort per-domain link counters; never fails the import.

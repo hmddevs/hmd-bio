@@ -8,6 +8,8 @@ import { captureError } from "@/lib/errors";
 import { timingSafeEqualStr } from "@/lib/utils";
 import { PRIMARY_DOMAIN, normaliseHost } from "@/lib/domains";
 import { isDomainServable } from "@/lib/domain-cache";
+import { buildCacheEntry, refreshCachedLink, type CachedLink } from "@/lib/link-cache";
+import { deferUntilResponseSent } from "@/lib/worker-context";
 import { platformFromUA, parseHttpUrl } from "@/lib/deeplink";
 import { UAParser } from "ua-parser-js";
 
@@ -32,6 +34,36 @@ function resolveTargetUrl(
   if (!match) return fallbackUrl;
 
   return parseHttpUrl(match.url) ? match.url : fallbackUrl;
+}
+
+/**
+ * Brings the link cache into line with what this resolution found, after the
+ * response has gone out.
+ *
+ * Called on every outcome, not only the successful one. The 404 and 410 paths
+ * pass `null` and therefore *delete* the key, which is what makes the middleware's
+ * background call a repair mechanism rather than a refresh: a link that was
+ * removed, expired or edited while a cached entry was live is corrected by the
+ * very next request for it, even if the writer's own invalidation was lost.
+ *
+ * Skipped entirely off the primary domain, where nothing is ever cached, so a
+ * custom-domain redirect does not pay a KV round trip to delete a key that
+ * cannot exist.
+ */
+function syncLinkCache(
+  domain: string,
+  keyword: string,
+  entry: { value: CachedLink; ttlSeconds: number } | null
+): void {
+  if (domain !== PRIMARY_DOMAIN) return;
+
+  const work = refreshCachedLink(domain, keyword, entry).catch((err) => {
+    captureError(err, { route: "internal/resolve", domain, keyword, stage: "cache-refresh" });
+  });
+
+  // Nothing to defer to under plain Node, where there is no KV binding either,
+  // so the work has already resolved to a no-op and awaiting it is free.
+  if (!deferUntilResponseSent(work)) void work;
 }
 
 /**
@@ -83,11 +115,13 @@ export async function GET(request: NextRequest) {
   // hostname and must never resolve again.
   const link = await Link.findOne({ domain, keyword, ...LIVE_LINK_FILTER }).lean();
   if (!link) {
+    syncLinkCache(domain, keyword, null);
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
   // Check expiration
   if (link.expiresAt && new Date(link.expiresAt) < new Date()) {
+    syncLinkCache(domain, keyword, null);
     return Response.json({ error: "Link expired" }, { status: 410 });
   }
 
@@ -129,6 +163,12 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     captureError(err, { route: "internal/resolve", domain, keyword, stage: "click-log-setup" });
   }
+
+  // Populate the cache the middleware reads, so the next request for this
+  // keyword costs neither the hop back into this endpoint nor a MongoDB
+  // handshake. A link that is not cacheable (deeplink targets, about to expire)
+  // resolves to null here and has any entry it still holds removed.
+  syncLinkCache(domain, keyword, buildCacheEntry(domain, PRIMARY_DOMAIN, link));
 
   return Response.json({
     url: resolveTargetUrl(link.url, link.targets, request.headers.get("user-agent") || ""),
