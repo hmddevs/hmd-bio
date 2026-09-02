@@ -4,7 +4,7 @@ import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
-import { hashIP } from "@/lib/ip";
+import { hashIP, getClientIP } from "@/lib/ip";
 import { domainFromHost } from "@/lib/domains";
 import bcrypt from "bcryptjs";
 
@@ -27,7 +27,7 @@ export async function POST(
 
     // Rate limit: 5 password attempts per IP per minute
     const clientIP =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+      getClientIP(request.headers) || "unknown";
     const rl = await rateLimit(`unlock:${hashIP(clientIP)}`, {
       limit: 5,
       windowMs: 60_000,

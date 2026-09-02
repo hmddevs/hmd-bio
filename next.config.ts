@@ -3,8 +3,45 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Ported from vercel.json when the app moved to Cloudflare Workers. OpenNext
+  // does not read vercel.json, so anything left there is silently dropped.
+  async redirects() {
+    return [
+      {
+        source: "/:path(.*)",
+        has: [{ type: "host", value: "www.hmd.bio" }],
+        destination: "https://hmd.bio/:path",
+        permanent: true,
+      },
+      { source: "/register", destination: "/signup", permanent: true },
+      {
+        source: "/api/v1/auth/register",
+        destination: "/api/v1/auth/signup",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
+      {
+        source: "/api/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
+        source: "/preview/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, s-maxage=3600, stale-while-revalidate=300",
+          },
+        ],
+      },
+      {
+        source: "/:file(sitemap.xml|robots.txt)",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, s-maxage=86400" },
+        ],
+      },
       {
         source: "/(.*)",
         headers: [

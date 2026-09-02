@@ -1,9 +1,9 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { connectDB } from "@/lib/db";
+import { connectDB, registerBackgroundDbWork } from "@/lib/db";
 import { Link, LIVE_LINK_FILTER } from "@/models/Link";
 import { Click } from "@/models/Click";
-import { encryptIP, hashIP } from "@/lib/ip";
+import { encryptIP, hashIP, getClientIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { PRIMARY_DOMAIN, domainFromHost } from "@/lib/domains";
@@ -68,7 +68,14 @@ export default async function KeywordPage({
 
   // Read before the limiter, because the limiter keys on it, and reused for
   // click logging further down.
-  const clientIP = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  //
+  // `getClientIP` rather than `x-forwarded-for` directly: Cloudflare appends
+  // the real address to whatever the client sent, so the first entry of that
+  // header is caller-controlled. Vercel overwrote it, which is why reading it
+  // here used to be safe. Left as it was, a caller could rotate the header to
+  // get an unlimited number of rate-limit buckets on this unauthenticated
+  // path, and have arbitrary strings encrypted and stored as click IPs.
+  const clientIP = getClientIP(requestHeaders) || "unknown";
 
   // Same key, same limit, same window as /api/internal/resolve, deliberately.
   // This page is reachable without the middleware ever running: the matcher's
@@ -132,29 +139,46 @@ export default async function KeywordPage({
 
   const userAgent = requestHeaders.get("user-agent") || "";
   const referrer = requestHeaders.get("referer") || "";
-  const countryCode = requestHeaders.get("x-vercel-ip-country") || "";
+  // See the note in src/proxy.ts: Vercel and Cloudflare use different geo
+  // header names, so both are read.
+  const countryCode =
+    requestHeaders.get("x-vercel-ip-country") ||
+    requestHeaders.get("cf-ipcountry") ||
+    "";
 
-  const ua = UAParser(userAgent);
-  const browser = ua.browser.name || "";
-  const os = ua.os.name || "";
-  const { iv: ipIv, ciphertext: ipRaw } =
-    clientIP !== "unknown" ? encryptIP(clientIP) : { iv: "", ciphertext: "" };
+  // Same guard as /api/internal/resolve: this is the degradation path, so a
+  // misconfigured IP_ENCRYPTION_KEY throwing out of `encryptIP` must not turn
+  // every short link into a 500. Click logging is the only thing that fails.
+  try {
+    const ua = UAParser(userAgent);
+    const browser = ua.browser.name || "";
+    const os = ua.os.name || "";
+    const { iv: ipIv, ciphertext: ipRaw } =
+      clientIP !== "unknown" ? encryptIP(clientIP) : { iv: "", ciphertext: "" };
 
-  // Fire-and-forget click logging — never block the redirect on it.
-  Promise.all([
-    Click.create({
-      domain,
-      keyword,
-      referrer,
-      userAgent,
-      ipRaw,
-      ipIv,
-      countryCode,
-      browser,
-      os,
-    }),
-    Link.updateOne({ domain, keyword, ...LIVE_LINK_FILTER }, { $inc: { clicks: 1 } }),
-  ]).catch(() => {});
+    // Fire-and-forget click logging — never block the redirect on it. Registered
+    // with the request so that closing the connection, and workerd cancelling
+    // whatever is still in flight, cannot drop the write.
+    const clickWrite = Promise.all([
+      Click.create({
+        domain,
+        keyword,
+        referrer,
+        userAgent,
+        ipRaw,
+        ipIv,
+        countryCode,
+        browser,
+        os,
+      }),
+      Link.updateOne({ domain, keyword, ...LIVE_LINK_FILTER }, { $inc: { clicks: 1 } }),
+    ]).catch((err) => {
+      captureError(err, { route: "fallback-keyword", domain, keyword });
+    });
+    registerBackgroundDbWork(clickWrite);
+  } catch (err) {
+    captureError(err, { route: "fallback-keyword", domain, keyword, stage: "click-log-setup" });
+  }
 
   redirect(link.url);
 }

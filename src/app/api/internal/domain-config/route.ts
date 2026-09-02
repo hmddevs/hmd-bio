@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
-import { hashIP } from "@/lib/ip";
+import { hashIP, getClientIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { timingSafeEqualStr } from "@/lib/utils";
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  const clientIP = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const clientIP = getClientIP(request.headers) || "unknown";
   const rl = await rateLimit(`domain-config:${hashIP(clientIP)}`, { limit: 120, windowMs: 60_000 });
   if (!rl.allowed) {
     return Response.json({ error: "Too many requests" }, { status: 429 });

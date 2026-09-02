@@ -4,12 +4,13 @@ import { Link } from "@/models/Link";
 import { shortenSchema } from "@/lib/validations";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest, requireTurnstile } from "@/lib/auth";
-import { hashIP, encryptIP } from "@/lib/ip";
+import { hashIP, encryptIP, getClientIP } from "@/lib/ip";
 import { rateLimit, rateLimitCaller } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { Domain } from "@/models/Domain";
 import { checkDomainWritable } from "@/lib/domain-access";
 import { PRIMARY_DOMAIN, buildShortUrl } from "@/lib/domains";
+import { invalidateCachedLink } from "@/lib/link-cache";
 import {
   generateKeyword,
   isReservedKeyword,
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
       return apiError("URL protocol not allowed", 400);
     }
 
-    const rawIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    const rawIp = getClientIP(request.headers);
     const ipHash = hashIP(rawIp);
 
     // Anonymous callers share a per-IP bucket at the public rate. An
@@ -160,6 +161,23 @@ export async function POST(request: NextRequest) {
         return apiError("Keyword already in use", 409);
       }
       throw err;
+    }
+
+    // Nothing should be cached under a keyword that was free a moment ago, but
+    // the invariant this cache relies on is "every write to (domain, keyword)
+    // clears the key", not "creates are special". A delete whose invalidation
+    // failed leaves an entry that a later link of the same name would inherit,
+    // and that is precisely the stale redirect worth spending one KV call to
+    // rule out.
+    try {
+      await invalidateCachedLink(targetDomain, keyword);
+    } catch (err) {
+      captureError(err, {
+        route: "shorten",
+        stage: "cache-invalidate",
+        domain: targetDomain,
+        keyword,
+      });
     }
 
     // Best-effort counter for the dashboard. A failure here must never turn a

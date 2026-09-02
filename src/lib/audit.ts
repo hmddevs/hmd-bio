@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { captureError } from "@/lib/errors";
-import { hashIP } from "@/lib/ip";
+import { hashIP, getClientIP } from "@/lib/ip";
 import { AuditLog } from "@/models/AuditLog";
 import {
   buildAuditRecord,
@@ -164,7 +164,7 @@ function auditFailureContext(
 
 function adminIpHash(request?: NextRequest | null): string {
   if (!request) return "";
-  const raw = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  const raw = getClientIP(request.headers);
   if (!raw) return "";
   // hashIP refuses to run without IP_HASH_SALT. That refusal must not take the
   // whole entry down with it: an entry missing the actor's IP hash is still

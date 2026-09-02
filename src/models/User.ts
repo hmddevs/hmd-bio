@@ -1,4 +1,5 @@
-import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { Schema, Document, Model, Types } from "mongoose";
+import { connectionScopedModel } from "./connection-scoped-model";
 import { API_KEY_SCOPES, type ApiKeyScope } from "@/lib/api-key-scope";
 
 export interface IApiKey {
@@ -91,5 +92,7 @@ const UserSchema = new Schema<IUser>(
 // it on the live database.
 UserSchema.index({ "apiKeys.keyHash": 1 });
 
-export const User: Model<IUser> =
-  mongoose.models.User || mongoose.model<IUser>("User", UserSchema);
+export const User: Model<IUser> = connectionScopedModel<IUser>(
+  "User",
+  UserSchema
+);

@@ -11,6 +11,7 @@ import { recordAudit, isAdministrativeAccess } from "@/lib/audit";
 import { isReservedKeyword } from "@/lib/utils";
 import { domainFromQuery } from "@/lib/domain-access";
 import { PRIMARY_DOMAIN, buildShortUrl } from "@/lib/domains";
+import { invalidateCachedLinks } from "@/lib/link-cache";
 import bcrypt from "bcryptjs";
 
 export async function GET(
@@ -158,6 +159,25 @@ export async function PUT(
       return apiError("Link not found", 404);
     }
 
+    // Drop the cached resolution before answering, so the caller that made the
+    // change is never the one that sees the old target. Both keywords, because
+    // a rename leaves an entry behind under the previous one.
+    //
+    // Reported rather than raised: the update has already committed, so failing
+    // the request here would report failure for work that actually happened.
+    // The entry's own TTL bounds what a lost delete can cost.
+    try {
+      await invalidateCachedLinks(domain, [keyword, updated.keyword]);
+    } catch (err) {
+      captureError(err, {
+        route: "links/[keyword]",
+        method: "PUT",
+        stage: "cache-invalidate",
+        domain,
+        keyword,
+      });
+    }
+
     // Same reasoning as the DELETE path below, and the same gate. An
     // administrator repointing somebody else's link is the quieter of the two
     // administrative actions available here: the link keeps resolving, so
@@ -231,6 +251,28 @@ export async function DELETE(
   const ownerId = existing.owner ? existing.owner.toString() : null;
 
   await Link.deleteOne({ domain, keyword });
+
+  // A deleted link that keeps redirecting from cache is the worst stale value
+  // this cache can hold, so the delete is awaited here rather than deferred.
+  // Reported and not raised, for the same reason as the PUT path above: the
+  // link is already gone.
+  try {
+    // Keyed on the *persisted* keyword, not the request's. `keyword` is declared
+    // with `trim: true`, and mongoose applies that setter when casting a query
+    // filter, so `DELETE /api/v1/links/abc%20` removes the document `abc` while
+    // the request string is `abc `. Invalidating the request string alone would
+    // leave the live entry under `abc` untouched for its full lifetime. Both are
+    // dropped, since the two agree for every well-formed request anyway.
+    await invalidateCachedLinks(domain, [existing.keyword, keyword]);
+  } catch (err) {
+    captureError(err, {
+      route: "links/[keyword]",
+      method: "DELETE",
+      stage: "cache-invalidate",
+      domain,
+      keyword,
+    });
+  }
 
   // Also remove click logs, scoped to the same domain.
   const removedClicks = await Click.deleteMany({ domain, keyword });

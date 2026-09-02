@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Link } from "@/models/Link";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { requireAuth, requireOwnership } from "@/lib/api-auth";
-import { hashIP } from "@/lib/ip";
+import { hashIP, getClientIP } from "@/lib/ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/errors";
 import { domainFromQuery } from "@/lib/domain-access";
@@ -18,7 +18,7 @@ export async function POST(
   if (!authResult.ok) return authResult.response;
   const { session } = authResult;
 
-  const rawIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  const rawIp = getClientIP(request.headers);
   const ipHash = hashIP(rawIp);
   const rl = await rateLimit(`qr:${ipHash}`, { tier: "public" });
   if (!rl.allowed) {
