@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hmd-bio",
-  "main": ".open-next/worker.js",
+  "main": "worker-entry.js",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
@@ -25,6 +25,9 @@
   // compute next to the data is the right trade here even though it costs a
   // little latency on the purely static pages.
   "placement": { "mode": "smart" },
+  // Domain rechecks and click retention, carried over from vercel.json.
+  // worker-entry.js maps each expression to its path.
+  "triggers": { "crons": ["0 4 * * *", "30 4 * * *"] },
   "workers_dev": false,
   "observability": { "enabled": true }
 }
