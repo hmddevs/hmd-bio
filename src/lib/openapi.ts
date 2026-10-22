@@ -43,14 +43,20 @@ export const openApiSpec = {
         tags: ["Public"],
         summary: "Create a short link",
         description:
-          "Creates a short link. A valid Cloudflare Turnstile token is required unless " +
-          "TURNSTILE_SECRET_KEY is unset (dev only). If the caller has a session cookie " +
-          "or a valid `Bearer hmd_...` API key, the link is attributed to that user as its owner; " +
-          "otherwise it is created anonymously. Accepts the deeplink fields (`targets`, " +
-          "`forwardPath`, `forwardQuery`) on creation, but the 201 response shape below is " +
-          "deliberately unchanged; read them back with GET /api/v1/links/{keyword} or " +
-          "PUT /api/v1/links/{keyword}.",
-        security: [],
+          "Creates a short link. Authentication is optional and decides how the caller is " +
+          "gated: a session cookie or a valid `Bearer hmd_...` API key makes the caller " +
+          "accountable, so Turnstile is skipped entirely and the link is attributed to them " +
+          "as its owner. An anonymous caller is the only one that needs a valid Cloudflare " +
+          "Turnstile token (skipped only when TURNSTILE_SECRET_KEY is unset, in dev), and is " +
+          "rate-limited per IP rather than per account. A key refused for its own scope is " +
+          "answered with the 403 below rather than falling back to the anonymous path, so a " +
+          "read-only key cannot buy a write by supplying a Turnstile token. Accepts the " +
+          "deeplink fields (`targets`, `forwardPath`, `forwardQuery`) on creation, but the 201 " +
+          "response shape below is deliberately unchanged; read them back with " +
+          "GET /api/v1/links/{keyword} or PUT /api/v1/links/{keyword}.",
+        // Optional security: the empty object is what OpenAPI uses to say the
+        // endpoint may also be called with no credential at all.
+        security: [{}, { session: [] }, { BearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
